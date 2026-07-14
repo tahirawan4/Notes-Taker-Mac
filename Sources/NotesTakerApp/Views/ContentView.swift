@@ -7,20 +7,21 @@ struct ContentView: View {
     var body: some View {
         @Bindable var store = store
 
-        NavigationSplitView {
-            MeetingSidebar(selectedID: $store.selectedMeetingID)
-                .navigationSplitViewColumnWidth(min: 300, ideal: 340)
-        } detail: {
-            if let meeting = store.selectedMeeting {
-                MeetingDetailView(meeting: meeting)
-            } else {
-                EmptyStateView()
-            }
-        }
-        .safeAreaInset(edge: .top) {
+        VStack(spacing: 0) {
             RecordingToolbar()
                 .environment(store)
                 .environment(recorder)
+
+            NavigationSplitView {
+                MeetingSidebar(selectedID: $store.selectedMeetingID)
+                    .navigationSplitViewColumnWidth(min: 300, ideal: 340)
+            } detail: {
+                if let meeting = store.selectedMeeting {
+                    MeetingDetailView(meeting: meeting)
+                } else {
+                    EmptyStateView()
+                }
+            }
         }
         .preferredColorScheme(.light)
     }
