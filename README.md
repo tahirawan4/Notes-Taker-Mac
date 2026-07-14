@@ -20,6 +20,11 @@ It is designed for a Mac workflow where you can keep a lightweight meeting assis
 ## Requirements
 
 - macOS 14 or newer
+
+For direct app download, Xcode is not required.
+
+For building from source:
+
 - Xcode command line tools or Xcode
 - Swift 6 compatible toolchain
 
@@ -36,7 +41,23 @@ git clone git@github.com:tahirawan4/Notes-Taker-Mac.git
 cd Notes-Taker-Mac
 ```
 
-## Install
+## Install From Downloaded App
+
+Download the packaged app from this repository:
+
+```text
+artifacts/NotesTaker-macOS.zip
+```
+
+Then:
+
+1. Unzip `NotesTaker-macOS.zip`.
+2. Move `NotesTaker.app` into `/Applications`.
+3. Open `/Applications/NotesTaker.app`.
+
+If macOS blocks the app because it was downloaded from GitHub, right-click `NotesTaker.app`, choose **Open**, then confirm.
+
+## Install From Source
 
 Run the installer script:
 
@@ -96,17 +117,20 @@ When recording, macOS may ask for:
 
 - Screen Recording
 - Microphone
+- Speech Recognition
 - Accessibility, only for automatic Zoom or Chrome meeting detection
 
 ## Current Recording Status
 
 The current `RecordingService` records the main screen and microphone audio to a local `.mov` file using native macOS capture APIs. Meeting records link to the saved video so it can be played back inside the app.
 
-Still pending:
+Saved recordings can be processed with the **Process Recording** button. The current processing flow extracts audio from the saved recording, uses Apple Speech for transcription, and generates first-pass notes and action items.
+
+Still pending / limited:
 
 - System audio capture from Chrome/Zoom
-- Transcription from saved audio/video
-- AI-generated summary, decisions, and action items
+- Higher-quality AI summarization
+- Speaker identification
 
 ## Product Plan
 
