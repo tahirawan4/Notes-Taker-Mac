@@ -14,7 +14,7 @@ enum ScreenMovieRecorderError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .screenPermissionDenied:
-            "Screen Recording permission is required. Enable NotesTaker in System Settings → Privacy & Security → Screen & System Audio Recording, then restart the app."
+            "Screen Recording is not active for this exact app. In System Settings, remove NotesTaker with −, add /Applications/NotesTaker.app with +, then quit and reopen NotesTaker."
         case .noDisplay:
             "Could not find a display to capture."
         case .writerSetupFailed(let detail):
@@ -53,14 +53,14 @@ final class ScreenMovieRecorder: NSObject {
             content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         } catch {
             NSLog("[NotesTaker] ScreenCaptureKit shareable content failed: %@", String(describing: error))
-            // Do not auto-open Settings here — that loops when the toggle is already on but the
-            // running binary's code signature no longer matches the granted TCC identity.
+            // Do not auto-open Settings here. During development and reinstall, TCC can keep
+            // a stale NotesTaker row enabled while treating the new binary as a different app.
+            // Calling CGRequestScreenCaptureAccess repeatedly causes the modal loop the user saw.
             if preflight {
                 throw ScreenMovieRecorderError.startFailed(
-                    "macOS still blocked capture even though Screen Recording looks allowed. In System Settings, remove NotesTaker with −, add this exact app with +, then quit and reopen NotesTaker: \(Bundle.main.bundleURL.path)"
+                    "macOS still blocked capture even though Screen Recording looks enabled. Remove NotesTaker with −, add this exact app with +, then quit and reopen NotesTaker: \(Bundle.main.bundleURL.path)"
                 )
             }
-            _ = CGRequestScreenCaptureAccess()
             throw ScreenMovieRecorderError.screenPermissionDenied
         }
 

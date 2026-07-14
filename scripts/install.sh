@@ -83,4 +83,5 @@ else
 fi
 
 echo "Done."
-echo "If Screen Recording fails after install: System Settings → Privacy & Security → Screen & System Audio Recording → remove NotesTaker (−), add /Applications/NotesTaker.app (+), then relaunch."
+echo "Permission note: after installing an updated build, macOS may keep a stale NotesTaker permission row."
+echo "If capture says permission is missing: System Settings → Privacy & Security → Screen & System Audio Recording → remove NotesTaker (−), add /Applications/NotesTaker.app (+), then quit and reopen NotesTaker."
