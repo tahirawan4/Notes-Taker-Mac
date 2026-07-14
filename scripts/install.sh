@@ -47,6 +47,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <true/>
   <key>NSMicrophoneUsageDescription</key>
   <string>NotesTaker needs microphone access to capture meeting audio when recording is enabled.</string>
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>NotesTaker needs screen recording access to save meeting video from Zoom, Chrome, or your selected screen.</string>
 </dict>
 </plist>
 PLIST

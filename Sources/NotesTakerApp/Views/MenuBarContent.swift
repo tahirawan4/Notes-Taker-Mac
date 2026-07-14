@@ -9,16 +9,25 @@ struct MenuBarContent: View {
             if recorder.isRecording {
                 Text("Recording \(format(recorder.elapsed))")
                 Button("Stop Recording") {
-                    if let meeting = recorder.stop() {
-                        store.upsert(meeting)
+                    Task {
+                        if let meeting = await recorder.stop() {
+                            store.upsert(meeting)
+                        }
                     }
                 }
             } else {
+                if let lastError = recorder.lastError {
+                    Text(lastError)
+                }
                 Button("Start Zoom Capture") {
-                    store.upsert(recorder.start(source: .zoom))
+                    Task {
+                        store.upsert(await recorder.start(source: .zoom))
+                    }
                 }
                 Button("Start Chrome Capture") {
-                    store.upsert(recorder.start(source: .chrome))
+                    Task {
+                        store.upsert(await recorder.start(source: .chrome))
+                    }
                 }
             }
             Divider()

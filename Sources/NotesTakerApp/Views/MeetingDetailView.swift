@@ -85,11 +85,11 @@ struct MeetingDetailView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
                 VStack(spacing: 12) {
-                    Image(systemName: "video.badge.waveform")
+                    Image(systemName: meeting.status == .failed ? "exclamationmark.triangle" : "video.badge.waveform")
                         .font(.system(size: 42, weight: .semibold))
-                    Text("Video recording will appear here")
+                    Text(meeting.status == .failed ? "Recording failed" : "No video file saved")
                         .font(.title3.weight(.semibold))
-                    Text("The current build stores the meeting record and PDF exports. Connect ScreenCaptureKit inside RecordingService to attach real video files.")
+                    Text(videoEmptyMessage)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.white.opacity(0.72))
                         .frame(maxWidth: 520)
@@ -99,6 +99,13 @@ struct MeetingDetailView: View {
         }
         .frame(height: 260)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var videoEmptyMessage: String {
+        if meeting.status == .failed {
+            return meeting.summary.first ?? "Check Screen Recording and Microphone permissions, then try again."
+        }
+        return "Start Capture will save a local screen recording here. Transcript and AI notes require transcription processing after recording."
     }
 
     private func export(_ kind: PDFExportKind) {

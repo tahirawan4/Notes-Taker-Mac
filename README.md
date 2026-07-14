@@ -11,6 +11,7 @@ It is designed for a Mac workflow where you can keep a lightweight meeting assis
 - Meeting library with past records
 - Meeting detail screen with video area, notes, action items, and transcript tabs
 - Local meeting storage in macOS Application Support
+- Local screen recording saved as `.mov`
 - Modern PDF export for:
   - meeting notes
   - full transcript
@@ -85,7 +86,7 @@ swift build -c release
 
 The current app includes the meeting library, notes UI, transcript UI, action items, and PDF export pipeline.
 
-When live recording is connected, macOS may ask for:
+When recording, macOS may ask for:
 
 - Screen Recording
 - Microphone
@@ -93,11 +94,13 @@ When live recording is connected, macOS may ask for:
 
 ## Current Recording Status
 
-The current `RecordingService` manages meeting capture state and creates meeting records. The next engineering step is wiring it to native macOS capture APIs:
+The current `RecordingService` records the main screen and microphone audio to a local `.mov` file using native macOS capture APIs. Meeting records link to the saved video so it can be played back inside the app.
 
-- `ScreenCaptureKit` for screen/window recording
-- `AVFoundation` for writing video and audio files
-- A transcription provider for generating transcript segments, summaries, and action items
+Still pending:
+
+- System audio capture from Chrome/Zoom
+- Transcription from saved audio/video
+- AI-generated summary, decisions, and action items
 
 ## Product Plan
 

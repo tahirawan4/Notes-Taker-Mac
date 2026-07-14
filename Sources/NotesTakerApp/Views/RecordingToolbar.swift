@@ -9,10 +9,18 @@ struct RecordingToolbar: View {
         HStack(spacing: 14) {
             HStack(spacing: 9) {
                 Image(systemName: recorder.isRecording ? "record.circle.fill" : "record.circle")
-                    .foregroundStyle(recorder.isRecording ? .red : .teal)
-                Text(recorder.isRecording ? "Recording \(format(recorder.elapsed))" : "Ready to capture")
-                    .font(.headline)
-                    .foregroundStyle(AppColors.text)
+                    .foregroundStyle(statusColor)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(recorder.isRecording ? "Recording \(format(recorder.elapsed))" : "Ready to capture")
+                        .font(.headline)
+                        .foregroundStyle(AppColors.text)
+                    if let lastError = recorder.lastError {
+                        Text(lastError)
+                            .font(.caption)
+                            .lineLimit(1)
+                            .foregroundStyle(.coral)
+                    }
+                }
             }
 
             Spacer()
@@ -45,14 +53,23 @@ struct RecordingToolbar: View {
     }
 
     private func toggleRecording() {
-        if recorder.isRecording {
-            if let meeting = recorder.stop() {
+        Task {
+            if recorder.isRecording {
+                if let meeting = await recorder.stop() {
+                    store.upsert(meeting)
+                }
+            } else {
+                let meeting = await recorder.start(source: source)
                 store.upsert(meeting)
             }
-        } else {
-            let meeting = recorder.start(source: source)
-            store.upsert(meeting)
         }
+    }
+
+    private var statusColor: Color {
+        if recorder.lastError != nil {
+            return .coral
+        }
+        return recorder.isRecording ? .red : .teal
     }
 
     private func format(_ seconds: TimeInterval) -> String {
