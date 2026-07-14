@@ -10,6 +10,7 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 EXECUTABLE="$ROOT_DIR/.build/release/$APP_NAME"
 INSTALL_TO_APPLICATIONS=false
+SIGNING_IDENTITY="NotesTaker Local Developer"
 
 if [[ "${1:-}" == "--applications" ]]; then
   INSTALL_TO_APPLICATIONS=true
@@ -17,8 +18,53 @@ fi
 
 cd "$ROOT_DIR"
 
+ensure_signing_identity() {
+  if security find-certificate -c "$SIGNING_IDENTITY" >/dev/null 2>&1; then
+    return
+  fi
+
+  echo "Creating local signing identity: $SIGNING_IDENTITY"
+  CERT_DIR="$(mktemp -d)"
+  KEY_PATH="$CERT_DIR/notestaker.key"
+  CERT_PATH="$CERT_DIR/notestaker.crt"
+  P12_PATH="$CERT_DIR/notestaker.p12"
+  P12_PASSWORD="notestaker-local"
+
+  openssl req \
+    -newkey rsa:2048 \
+    -nodes \
+    -keyout "$KEY_PATH" \
+    -x509 \
+    -days 3650 \
+    -out "$CERT_PATH" \
+    -subj "/CN=$SIGNING_IDENTITY/" \
+    -addext "keyUsage=digitalSignature" \
+    -addext "extendedKeyUsage=codeSigning" >/dev/null 2>&1
+
+  openssl pkcs12 \
+    -legacy \
+    -export \
+    -inkey "$KEY_PATH" \
+    -in "$CERT_PATH" \
+    -name "$SIGNING_IDENTITY" \
+    -out "$P12_PATH" \
+    -passout "pass:$P12_PASSWORD" >/dev/null 2>&1
+
+  security import "$P12_PATH" \
+    -k "$HOME/Library/Keychains/login.keychain-db" \
+    -P "$P12_PASSWORD" \
+    -T /usr/bin/codesign >/dev/null
+
+  security set-key-partition-list \
+    -S apple-tool:,apple:,codesign: \
+    -s \
+    -k "" \
+    "$HOME/Library/Keychains/login.keychain-db" >/dev/null 2>&1 || true
+}
+
 echo "Building $APP_NAME in release mode..."
 swift build -c release
+ensure_signing_identity
 
 echo "Creating $APP_DIR..."
 rm -rf "$APP_DIR"
@@ -61,21 +107,21 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 PLIST
 
 # Bind Info.plist into the signature so TCC tracks a stable app identity.
-codesign --force --deep --sign - "$APP_DIR"
-echo "Signed $APP_DIR (adhoc)"
+codesign --force --deep --sign "$SIGNING_IDENTITY" "$APP_DIR"
+echo "Signed $APP_DIR with $SIGNING_IDENTITY"
 
 echo "Created $APP_DIR"
 
 if [[ "$INSTALL_TO_APPLICATIONS" == "true" ]]; then
   /usr/bin/ditto "$APP_DIR" "/Applications/$APP_NAME.app"
-  codesign --force --deep --sign - "/Applications/$APP_NAME.app"
+  codesign --force --deep --sign "$SIGNING_IDENTITY" "/Applications/$APP_NAME.app"
   echo "Installed to /Applications/$APP_NAME.app"
 else
   read -r -p "Copy $APP_NAME.app to /Applications? [y/N] " answer
   case "$answer" in
     [yY][eE][sS]|[yY])
       /usr/bin/ditto "$APP_DIR" "/Applications/$APP_NAME.app"
-      codesign --force --deep --sign - "/Applications/$APP_NAME.app"
+      codesign --force --deep --sign "$SIGNING_IDENTITY" "/Applications/$APP_NAME.app"
       echo "Installed to /Applications/$APP_NAME.app"
       ;;
     *)

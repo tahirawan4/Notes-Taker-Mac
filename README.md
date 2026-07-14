@@ -71,7 +71,9 @@ The script will:
 
 1. Build NotesTaker in release mode.
 2. Create `dist/NotesTaker.app`.
-3. Ask whether to copy the app to `/Applications`.
+3. Create a local `NotesTaker Local Developer` signing identity if needed.
+4. Sign the app so macOS Screen Recording permissions stay stable across rebuilds.
+5. Ask whether to copy the app to `/Applications`.
 
 After installation, open:
 
