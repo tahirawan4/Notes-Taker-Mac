@@ -7,6 +7,7 @@ import ScreenCaptureKit
 enum ScreenMovieRecorderError: LocalizedError {
     case screenPermissionDenied
     case noDisplay
+    case noWindow
     case writerSetupFailed(String)
     case startFailed(String)
     case stopFailed(String)
@@ -17,6 +18,8 @@ enum ScreenMovieRecorderError: LocalizedError {
             "Screen Recording is not active for this exact app. In System Settings, remove NotesTaker with −, add /Applications/NotesTaker.app with +, then quit and reopen NotesTaker."
         case .noDisplay:
             "Could not find a display to capture."
+        case .noWindow:
+            "Could not find the selected window. It may have been closed or hidden."
         case .writerSetupFailed(let detail):
             "Could not prepare the movie file: \(detail)"
         case .startFailed(let detail):
@@ -38,7 +41,7 @@ final class ScreenMovieRecorder: NSObject {
         stream != nil
     }
 
-    func start(to url: URL) async throws {
+    func start(to url: URL, target: CaptureTarget = .mainDisplay()) async throws {
         NSLog("[NotesTaker] Recording start requested → %@", url.path)
 
         let preflight = CGPreflightScreenCaptureAccess()
@@ -69,14 +72,11 @@ final class ScreenMovieRecorder: NSObject {
             throw ScreenMovieRecorderError.screenPermissionDenied
         }
 
-        guard let display = content.displays.first(where: { $0.displayID == CGMainDisplayID() }) ?? content.displays.first else {
-            throw ScreenMovieRecorderError.noDisplay
-        }
-
         let scale = max(Int(NSScreen.main?.backingScaleFactor ?? 2), 1)
-        let width = max(display.width * scale, 2)
-        let height = max(display.height * scale, 2)
-        NSLog("[NotesTaker] Capturing display %u at %dx%d (scale %d)", display.displayID, width, height, scale)
+        let source = try captureSource(from: content, target: target, scale: scale)
+        let width = source.width
+        let height = source.height
+        NSLog("[NotesTaker] Capturing %@ at %dx%d (scale %d)", source.label, width, height, scale)
 
         try? FileManager.default.removeItem(at: url)
 
@@ -133,7 +133,7 @@ final class ScreenMovieRecorder: NSObject {
             throw ScreenMovieRecorderError.writerSetupFailed(writer.error?.localizedDescription ?? "Unknown writer error")
         }
 
-        let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
+        let filter = source.filter
         let configuration = SCStreamConfiguration()
         configuration.width = width
         configuration.height = height
@@ -172,6 +172,33 @@ final class ScreenMovieRecorder: NSObject {
             NSLog("[NotesTaker] startCapture failed: %@", String(describing: error))
             await teardownAfterFailure()
             throw ScreenMovieRecorderError.startFailed(error.localizedDescription)
+        }
+    }
+
+    private func captureSource(from content: SCShareableContent, target: CaptureTarget, scale: Int) throws -> (filter: SCContentFilter, width: Int, height: Int, label: String) {
+        switch target.kind {
+        case .display:
+            let displayID = target.displayID ?? CGMainDisplayID()
+            guard let display = content.displays.first(where: { $0.displayID == displayID }) ?? content.displays.first else {
+                throw ScreenMovieRecorderError.noDisplay
+            }
+            return (
+                SCContentFilter(display: display, excludingApplications: [], exceptingWindows: []),
+                max(display.width * scale, 2),
+                max(display.height * scale, 2),
+                "display \(display.displayID)"
+            )
+        case .window:
+            guard let windowID = target.windowID,
+                  let window = content.windows.first(where: { $0.windowID == windowID }) else {
+                throw ScreenMovieRecorderError.noWindow
+            }
+            return (
+                SCContentFilter(desktopIndependentWindow: window),
+                max(Int(window.frame.width) * scale, 2),
+                max(Int(window.frame.height) * scale, 2),
+                "window \(windowID)"
+            )
         }
     }
 

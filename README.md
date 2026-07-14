@@ -8,6 +8,7 @@ It is designed for a Mac workflow where you can keep a lightweight meeting assis
 
 - Native macOS SwiftUI interface
 - Menu-bar start/stop controls
+- Capture source picker for full screen or a specific window
 - Meeting library with past records
 - Meeting detail screen with video area, notes, action items, and transcript tabs
 - Local meeting storage in macOS Application Support
@@ -138,7 +139,7 @@ API keys are stored in macOS Keychain. Transcript text is sent to the selected A
 
 ## Current Recording Status
 
-The current `RecordingService` records the main screen and microphone audio to a local `.mov` file using native macOS capture APIs. Meeting records link to the saved video so it can be played back inside the app.
+The current `RecordingService` records either the full screen or a selected window, plus microphone audio where available, to a local `.mov` file using native macOS capture APIs. Meeting records link to the saved video so it can be opened or revealed in Finder.
 
 Saved recordings can be processed with the **Process Recording** button. The current processing flow extracts audio from the saved recording, uses Apple Speech for transcription, and generates first-pass notes and action items. If an OpenAI or Claude key is configured, NotesTaker sends the transcript to that provider for improved summary, decisions, risks, questions, and action items.
 

@@ -6,6 +6,7 @@ struct RecordingToolbar: View {
     @Environment(AISettingsStore.self) private var aiSettings
     @State private var source: MeetingSource = .zoom
     @State private var isShowingAISettings = false
+    @State private var isShowingCapturePicker = false
 
     var body: some View {
         HStack(spacing: 14) {
@@ -67,6 +68,11 @@ struct RecordingToolbar: View {
             AISettingsView()
                 .environment(aiSettings)
         }
+        .sheet(isPresented: $isShowingCapturePicker) {
+            CaptureSourcePickerView(meetingSource: source) { target in
+                startRecording(target: target)
+            }
+        }
     }
 
     private func toggleRecording() {
@@ -76,9 +82,15 @@ struct RecordingToolbar: View {
                     store.upsert(meeting)
                 }
             } else {
-                let meeting = await recorder.start(source: source)
-                store.upsert(meeting)
+                isShowingCapturePicker = true
             }
+        }
+    }
+
+    private func startRecording(target: CaptureTarget) {
+        Task {
+            let meeting = await recorder.start(source: source, target: target)
+            store.upsert(meeting)
         }
     }
 

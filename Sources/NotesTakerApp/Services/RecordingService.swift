@@ -15,14 +15,14 @@ final class RecordingService {
         activeMeeting != nil
     }
 
-    func start(source: MeetingSource) async -> Meeting {
+    func start(source: MeetingSource, target: CaptureTarget = .mainDisplay()) async -> Meeting {
         var meeting = Meeting.starter(source: source)
         lastError = nil
 
         do {
             let outputURL = try recordingsDirectory()
                 .appending(path: "\(meeting.id.uuidString).mov")
-            try await movieRecorder.start(to: outputURL)
+            try await movieRecorder.start(to: outputURL, target: target)
             activeMeeting = meeting
             elapsed = 0
             startTimer()
