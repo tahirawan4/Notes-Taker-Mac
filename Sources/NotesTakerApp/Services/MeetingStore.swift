@@ -88,6 +88,14 @@ final class MeetingStore {
         )
         upsert(meeting)
     }
+
+    func deleteMeeting(id: Meeting.ID) {
+        meetings.removeAll { $0.id == id }
+        if selectedMeetingID == id {
+            selectedMeetingID = meetings.first?.id
+        }
+        save()
+    }
 }
 
 private extension JSONEncoder {

@@ -51,7 +51,10 @@ struct MeetingSidebar: View {
                     ForEach(filteredMeetings) { meeting in
                         MeetingRow(
                             meeting: meeting,
-                            isSelected: selectedID == meeting.id
+                            isSelected: selectedID == meeting.id,
+                            onDelete: {
+                                store.deleteMeeting(id: meeting.id)
+                            }
                         )
                         .onTapGesture {
                             selectedID = meeting.id
@@ -142,6 +145,9 @@ private struct NewMeetingView: View {
 private struct MeetingRow: View {
     let meeting: Meeting
     let isSelected: Bool
+    let onDelete: () -> Void
+
+    @State private var isConfirmingDelete = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -152,6 +158,17 @@ private struct MeetingRow: View {
                     .foregroundStyle(titleColor)
                 Spacer()
                 StatusBadge(status: meeting.status, isOnSelectedRow: isSelected)
+                Button {
+                    isConfirmingDelete = true
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 12, weight: .bold))
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(deleteColor)
+                .background(deleteBackground, in: Circle())
+                .help("Delete meeting")
             }
 
             HStack(spacing: 8) {
@@ -177,6 +194,18 @@ private struct MeetingRow: View {
                 .stroke(rowBorder, lineWidth: 1)
         }
         .contentShape(RoundedRectangle(cornerRadius: 8))
+        .confirmationDialog(
+            "Delete this meeting?",
+            isPresented: $isConfirmingDelete,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Meeting", role: .destructive) {
+                onDelete()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the meeting from your local history. Saved recording files are not deleted.")
+        }
     }
 
     private var sourceIcon: String {
@@ -206,6 +235,14 @@ private struct MeetingRow: View {
 
     private var detailColor: Color {
         isSelected ? Color.white.opacity(0.78) : AppColors.textMuted
+    }
+
+    private var deleteColor: Color {
+        isSelected ? Color.white.opacity(0.9) : .coral
+    }
+
+    private var deleteBackground: Color {
+        isSelected ? Color.white.opacity(0.12) : Color.coral.opacity(0.12)
     }
 }
 
