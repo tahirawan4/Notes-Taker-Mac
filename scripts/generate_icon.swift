@@ -56,53 +56,61 @@ func drawIcon(size: CGFloat) -> NSImage {
     let scale = size / 1024
     func r(_ value: CGFloat) -> CGFloat { value * scale }
 
-    let tile = CGRect(x: r(64), y: r(64), width: r(896), height: r(896))
+    let tile = CGRect(x: r(82), y: r(82), width: r(860), height: r(860))
     let tilePath = NSBezierPath(roundedRect: tile, xRadius: r(210), yRadius: r(210))
     let gradient = NSGradient(colors: [
-        NSColor(calibratedRed: 0.05, green: 0.10, blue: 0.19, alpha: 1),
-        NSColor(calibratedRed: 0.10, green: 0.22, blue: 0.34, alpha: 1),
-        NSColor(calibratedRed: 0.02, green: 0.70, blue: 0.72, alpha: 1)
+        NSColor(calibratedRed: 0.96, green: 1.00, blue: 0.99, alpha: 1),
+        NSColor(calibratedRed: 0.89, green: 0.98, blue: 0.99, alpha: 1),
+        NSColor(calibratedRed: 0.98, green: 0.99, blue: 1.00, alpha: 1)
     ])!
-    gradient.draw(in: tilePath, angle: 135)
+    gradient.draw(in: tilePath, angle: 125)
 
-    NSColor.white.withAlphaComponent(0.14).setStroke()
-    tilePath.lineWidth = r(8)
+    NSColor.tealAccent.withAlphaComponent(0.26).setStroke()
+    tilePath.lineWidth = r(7)
     tilePath.stroke()
 
-    let sheet = CGRect(x: r(284), y: r(238), width: r(456), height: r(548))
-    let sheetPath = NSBezierPath(roundedRect: sheet, xRadius: r(54), yRadius: r(54))
-    NSColor(calibratedRed: 0.96, green: 0.99, blue: 0.98, alpha: 1).setFill()
+    let sheet = CGRect(x: r(300), y: r(242), width: r(424), height: r(536))
+    let sheetPath = NSBezierPath(roundedRect: sheet, xRadius: r(70), yRadius: r(70))
+    NSColor.white.setFill()
     sheetPath.fill()
+    NSColor.navy.withAlphaComponent(0.12).setStroke()
+    sheetPath.lineWidth = r(5)
+    sheetPath.stroke()
 
     let fold = NSBezierPath()
-    fold.move(to: CGPoint(x: sheet.maxX - r(116), y: sheet.maxY))
-    fold.line(to: CGPoint(x: sheet.maxX, y: sheet.maxY - r(116)))
-    fold.line(to: CGPoint(x: sheet.maxX - r(104), y: sheet.maxY - r(104)))
+    fold.move(to: CGPoint(x: sheet.maxX - r(112), y: sheet.maxY))
+    fold.line(to: CGPoint(x: sheet.maxX, y: sheet.maxY - r(112)))
+    fold.line(to: CGPoint(x: sheet.maxX - r(98), y: sheet.maxY - r(98)))
     fold.close()
-    NSColor(calibratedRed: 0.78, green: 0.92, blue: 0.94, alpha: 1).setFill()
+    NSColor(calibratedRed: 0.86, green: 0.96, blue: 0.97, alpha: 1).setFill()
     fold.fill()
 
-    drawLine(x: r(364), y: r(648), width: r(248), height: r(26), radius: r(13), color: .navy)
-    drawLine(x: r(364), y: r(570), width: r(296), height: r(22), radius: r(11), color: .muted)
-    drawLine(x: r(364), y: r(508), width: r(244), height: r(22), radius: r(11), color: .muted)
+    drawLine(x: r(378), y: r(650), width: r(224), height: r(18), radius: r(9), color: .navy.withAlphaComponent(0.88))
+    drawLine(x: r(378), y: r(588), width: r(270), height: r(14), radius: r(7), color: .muted.withAlphaComponent(0.48))
+    drawLine(x: r(378), y: r(540), width: r(196), height: r(14), radius: r(7), color: .muted.withAlphaComponent(0.42))
 
-    let micRect = CGRect(x: r(428), y: r(312), width: r(168), height: r(214))
-    let mic = NSBezierPath(roundedRect: micRect, xRadius: r(82), yRadius: r(82))
-    NSColor.tealAccent.setFill()
-    mic.fill()
+    let micRect = CGRect(x: r(454), y: r(344), width: r(116), height: r(152))
+    let mic = NSBezierPath(roundedRect: micRect, xRadius: r(74), yRadius: r(74))
+    NSColor.tealAccent.setStroke()
+    mic.lineWidth = r(16)
+    mic.stroke()
 
-    let micInner = NSBezierPath(roundedRect: micRect.insetBy(dx: r(42), dy: r(42)), xRadius: r(44), yRadius: r(44))
-    NSColor.white.withAlphaComponent(0.28).setFill()
-    micInner.fill()
+    let smile = NSBezierPath()
+    smile.move(to: CGPoint(x: r(424), y: r(420)))
+    smile.curve(to: CGPoint(x: r(600), y: r(420)), controlPoint1: CGPoint(x: r(430), y: r(312)), controlPoint2: CGPoint(x: r(594), y: r(312)))
+    smile.lineWidth = r(15)
+    smile.lineCapStyle = .round
+    NSColor.tealAccent.setStroke()
+    smile.stroke()
 
-    let stem = NSBezierPath(roundedRect: CGRect(x: r(498), y: r(238), width: r(28), height: r(94)), xRadius: r(14), yRadius: r(14))
+    let stem = NSBezierPath(roundedRect: CGRect(x: r(503), y: r(270), width: r(18), height: r(68)), xRadius: r(9), yRadius: r(9))
     NSColor.tealAccent.setFill()
     stem.fill()
-    let base = NSBezierPath(roundedRect: CGRect(x: r(428), y: r(220), width: r(168), height: r(32)), xRadius: r(16), yRadius: r(16))
+    let base = NSBezierPath(roundedRect: CGRect(x: r(462), y: r(254), width: r(100), height: r(16)), xRadius: r(8), yRadius: r(8))
     base.fill()
 
-    drawWave(x: r(224), y: r(398), heights: [58, 112, 164, 94], scale: scale)
-    drawWave(x: r(750), y: r(398), heights: [94, 164, 112, 58], scale: scale)
+    drawWave(x: r(232), y: r(438), heights: [34, 62, 88], scale: scale, color: NSColor.tealAccent.withAlphaComponent(0.34))
+    drawWave(x: r(744), y: r(438), heights: [88, 62, 34], scale: scale, color: NSColor.tealAccent.withAlphaComponent(0.34))
 
     return image
 }
@@ -113,10 +121,10 @@ func drawLine(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, radius: C
     path.fill()
 }
 
-func drawWave(x: CGFloat, y: CGFloat, heights: [CGFloat], scale: CGFloat) {
+func drawWave(x: CGFloat, y: CGFloat, heights: [CGFloat], scale: CGFloat, color: NSColor) {
     for (index, height) in heights.enumerated() {
-        let line = NSBezierPath(roundedRect: CGRect(x: x + CGFloat(index) * 34 * scale, y: y - height * scale / 2, width: 16 * scale, height: height * scale), xRadius: 8 * scale, yRadius: 8 * scale)
-        NSColor.white.withAlphaComponent(0.72).setFill()
+        let line = NSBezierPath(roundedRect: CGRect(x: x + CGFloat(index) * 34 * scale, y: y - height * scale / 2, width: 12 * scale, height: height * scale), xRadius: 6 * scale, yRadius: 6 * scale)
+        color.setFill()
         line.fill()
     }
 }
