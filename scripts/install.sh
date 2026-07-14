@@ -9,6 +9,7 @@ CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 EXECUTABLE="$ROOT_DIR/.build/release/$APP_NAME"
+ICON_FILE="$ROOT_DIR/Resources/NotesTaker.icns"
 INSTALL_TO_APPLICATIONS=false
 SIGNING_IDENTITY="NotesTaker Local Developer"
 
@@ -66,10 +67,16 @@ echo "Building $APP_NAME in release mode..."
 swift build -c release
 ensure_signing_identity
 
+if [[ ! -f "$ICON_FILE" ]]; then
+  echo "Generating app icon..."
+  swift scripts/generate_icon.swift
+fi
+
 echo "Creating $APP_DIR..."
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$EXECUTABLE" "$MACOS_DIR/$APP_NAME"
+cp "$ICON_FILE" "$RESOURCES_DIR/NotesTaker.icns"
 
 cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -85,6 +92,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
+  <string>NotesTaker</string>
+  <key>CFBundleIconFile</key>
   <string>NotesTaker</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
