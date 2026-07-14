@@ -46,11 +46,22 @@ struct MeetingSidebar: View {
                 .textFieldStyle(.roundedBorder)
                 .padding(.horizontal, 18)
 
-            List(filteredMeetings, selection: $selectedID) { meeting in
-                MeetingRow(meeting: meeting)
-                    .tag(meeting.id)
+            ScrollView {
+                LazyVStack(spacing: 10) {
+                    ForEach(filteredMeetings) { meeting in
+                        MeetingRow(
+                            meeting: meeting,
+                            isSelected: selectedID == meeting.id
+                        )
+                        .onTapGesture {
+                            selectedID = meeting.id
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+                .padding(.bottom, 18)
             }
-            .listStyle(.sidebar)
         }
         .background(AppColors.sidebar)
         .preferredColorScheme(.light)
@@ -68,6 +79,7 @@ private struct NewMeetingView: View {
     @State private var title = ""
     @State private var source: MeetingSource = .manual
     @State private var startedAt = Date()
+    @FocusState private var isTitleFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -81,7 +93,17 @@ private struct NewMeetingView: View {
 
             VStack(alignment: .leading, spacing: 14) {
                 TextField("Meeting title", text: $title)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(AppColors.text)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(isTitleFocused ? Color.teal : Color.black.opacity(0.12), lineWidth: isTitleFocused ? 2 : 1)
+                    }
+                    .focused($isTitleFocused)
 
                 Picker("Source", selection: $source) {
                     ForEach(MeetingSource.allCases) { item in
@@ -91,7 +113,6 @@ private struct NewMeetingView: View {
 
                 DatePicker("Started", selection: $startedAt)
             }
-            .foregroundStyle(AppColors.text)
 
             HStack {
                 Spacer()
@@ -112,11 +133,15 @@ private struct NewMeetingView: View {
         .frame(width: 440)
         .background(AppColors.canvas)
         .preferredColorScheme(.light)
+        .onAppear {
+            isTitleFocused = true
+        }
     }
 }
 
 private struct MeetingRow: View {
     let meeting: Meeting
+    let isSelected: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -124,9 +149,9 @@ private struct MeetingRow: View {
                 Text(meeting.title)
                     .font(.headline)
                     .lineLimit(1)
-                    .foregroundStyle(AppColors.text)
+                    .foregroundStyle(titleColor)
                 Spacer()
-                StatusBadge(status: meeting.status)
+                StatusBadge(status: meeting.status, isOnSelectedRow: isSelected)
             }
 
             HStack(spacing: 8) {
@@ -134,16 +159,24 @@ private struct MeetingRow: View {
                 Text(meeting.startedAt.formatted(date: .abbreviated, time: .shortened))
             }
             .font(.caption)
-            .foregroundStyle(AppColors.textMuted)
+            .foregroundStyle(detailColor)
 
             HStack(spacing: 12) {
                 Label(formatDuration(meeting.duration), systemImage: "clock")
                 Label("\(meeting.actionItems.count)", systemImage: "checklist")
             }
             .font(.caption.weight(.medium))
-            .foregroundStyle(AppColors.textMuted)
+            .foregroundStyle(detailColor)
         }
-        .padding(.vertical, 8)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(rowBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(rowBorder, lineWidth: 1)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var sourceIcon: String {
@@ -158,18 +191,35 @@ private struct MeetingRow: View {
         let minutes = max(1, Int(duration / 60))
         return "\(minutes)m"
     }
+
+    private var rowBackground: Color {
+        isSelected ? .softNavy : AppColors.sidebar
+    }
+
+    private var rowBorder: Color {
+        isSelected ? Color.teal.opacity(0.45) : Color.clear
+    }
+
+    private var titleColor: Color {
+        isSelected ? .white : AppColors.text
+    }
+
+    private var detailColor: Color {
+        isSelected ? Color.white.opacity(0.78) : AppColors.textMuted
+    }
 }
 
 struct StatusBadge: View {
     let status: MeetingStatus
+    var isOnSelectedRow = false
 
     var body: some View {
         Text(status.rawValue)
             .font(.caption2.weight(.bold))
             .padding(.horizontal, 7)
             .padding(.vertical, 4)
-            .background(color.opacity(0.16), in: Capsule())
-            .foregroundStyle(color)
+            .background(backgroundColor, in: Capsule())
+            .foregroundStyle(foregroundColor)
     }
 
     private var color: Color {
@@ -179,5 +229,13 @@ struct StatusBadge: View {
         case .ready: .teal
         case .failed: .pink
         }
+    }
+
+    private var backgroundColor: Color {
+        isOnSelectedRow ? Color.white.opacity(0.16) : color.opacity(0.16)
+    }
+
+    private var foregroundColor: Color {
+        isOnSelectedRow ? .white : color
     }
 }

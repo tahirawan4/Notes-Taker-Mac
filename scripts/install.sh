@@ -9,6 +9,11 @@ CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 EXECUTABLE="$ROOT_DIR/.build/release/$APP_NAME"
+INSTALL_TO_APPLICATIONS=false
+
+if [[ "${1:-}" == "--applications" ]]; then
+  INSTALL_TO_APPLICATIONS=true
+fi
 
 cd "$ROOT_DIR"
 
@@ -55,15 +60,20 @@ PLIST
 
 echo "Created $APP_DIR"
 
-read -r -p "Copy $APP_NAME.app to /Applications? [y/N] " answer
-case "$answer" in
-  [yY][eE][sS]|[yY])
-    cp -R "$APP_DIR" "/Applications/$APP_NAME.app"
-    echo "Installed to /Applications/$APP_NAME.app"
-    ;;
-  *)
-    echo "Skipped /Applications copy. You can open $APP_DIR directly."
-    ;;
-esac
+if [[ "$INSTALL_TO_APPLICATIONS" == "true" ]]; then
+  /usr/bin/ditto "$APP_DIR" "/Applications/$APP_NAME.app"
+  echo "Installed to /Applications/$APP_NAME.app"
+else
+  read -r -p "Copy $APP_NAME.app to /Applications? [y/N] " answer
+  case "$answer" in
+    [yY][eE][sS]|[yY])
+      /usr/bin/ditto "$APP_DIR" "/Applications/$APP_NAME.app"
+      echo "Installed to /Applications/$APP_NAME.app"
+      ;;
+    *)
+      echo "Skipped /Applications copy. You can open $APP_DIR directly."
+      ;;
+  esac
+fi
 
 echo "Done."

@@ -56,6 +56,12 @@ After installation, open:
 /Applications/NotesTaker.app
 ```
 
+To install directly into `/Applications` without the prompt:
+
+```bash
+./scripts/install.sh --applications
+```
+
 If you skip the `/Applications` copy, open:
 
 ```text
