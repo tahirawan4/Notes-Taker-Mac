@@ -30,6 +30,7 @@ final class ScreenMovieRecorder: NSObject, @preconcurrency AVCaptureFileOutputRe
     private var session: AVCaptureSession?
     private var output: AVCaptureMovieFileOutput?
     private var outputURL: URL?
+    private var startContinuation: CheckedContinuation<Void, Error>?
     private var stopContinuation: CheckedContinuation<URL, Error>?
 
     var isRecording: Bool {
@@ -75,14 +76,10 @@ final class ScreenMovieRecorder: NSObject, @preconcurrency AVCaptureFileOutputRe
         self.outputURL = url
 
         session.startRunning()
-        output.startRecording(to: url, recordingDelegate: self)
 
-        guard output.isRecording else {
-            session.stopRunning()
-            self.session = nil
-            self.output = nil
-            self.outputURL = nil
-            throw ScreenMovieRecorderError.startFailed
+        try await withCheckedThrowingContinuation { continuation in
+            startContinuation = continuation
+            output.startRecording(to: url, recordingDelegate: self)
         }
     }
 
@@ -102,6 +99,15 @@ final class ScreenMovieRecorder: NSObject, @preconcurrency AVCaptureFileOutputRe
 
     func fileOutput(
         _ output: AVCaptureFileOutput,
+        didStartRecordingTo fileURL: URL,
+        from connections: [AVCaptureConnection]
+    ) {
+        startContinuation?.resume()
+        startContinuation = nil
+    }
+
+    func fileOutput(
+        _ output: AVCaptureFileOutput,
         didFinishRecordingTo outputFileURL: URL,
         from connections: [AVCaptureConnection],
         error: Error?
@@ -111,11 +117,13 @@ final class ScreenMovieRecorder: NSObject, @preconcurrency AVCaptureFileOutputRe
         self.output = nil
 
         if let error {
+            startContinuation?.resume(throwing: error)
             stopContinuation?.resume(throwing: error)
         } else {
             stopContinuation?.resume(returning: outputFileURL)
         }
 
+        startContinuation = nil
         stopContinuation = nil
     }
 
