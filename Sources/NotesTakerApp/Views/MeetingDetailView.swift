@@ -1,4 +1,4 @@
-import AVKit
+import AppKit
 import SwiftUI
 
 struct MeetingDetailView: View {
@@ -80,9 +80,10 @@ struct MeetingDetailView: View {
         ZStack {
             RoundedRectangle(cornerRadius: 8)
                 .fill(LinearGradient(colors: [.navy, .indigo.opacity(0.78)], startPoint: .topLeading, endPoint: .bottomTrailing))
-            if let videoPath = meeting.videoPath, FileManager.default.fileExists(atPath: videoPath) {
-                VideoPlayer(player: AVPlayer(url: URL(filePath: videoPath)))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            if meeting.status == .ready,
+               let videoPath = meeting.videoPath,
+               FileManager.default.fileExists(atPath: videoPath) {
+                savedRecordingView(path: videoPath)
             } else {
                 VStack(spacing: 12) {
                     Image(systemName: meeting.status == .failed ? "exclamationmark.triangle" : "video.badge.waveform")
@@ -99,6 +100,35 @@ struct MeetingDetailView: View {
         }
         .frame(height: 260)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func savedRecordingView(path: String) -> some View {
+        let url = URL(filePath: path)
+        return VStack(spacing: 14) {
+            Image(systemName: "checkmark.circle")
+                .font(.system(size: 42, weight: .semibold))
+            Text("Recording saved")
+                .font(.title3.weight(.semibold))
+            Text(url.lastPathComponent)
+                .font(.caption.monospaced())
+                .foregroundStyle(.white.opacity(0.72))
+                .lineLimit(1)
+            HStack(spacing: 10) {
+                Button {
+                    NSWorkspace.shared.open(url)
+                } label: {
+                    Label("Open Recording", systemImage: "play.rectangle")
+                }
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                } label: {
+                    Label("Reveal in Finder", systemImage: "folder")
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.teal)
+        }
+        .foregroundStyle(.white)
     }
 
     private var videoEmptyMessage: String {

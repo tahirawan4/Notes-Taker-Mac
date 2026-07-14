@@ -23,12 +23,12 @@ final class RecordingService {
             let outputURL = try recordingsDirectory()
                 .appending(path: "\(meeting.id.uuidString).mov")
             try await movieRecorder.start(to: outputURL)
-            meeting.videoPath = outputURL.path
             activeMeeting = meeting
             elapsed = 0
             startTimer()
             return meeting
         } catch {
+            NSLog("[NotesTaker] RecordingService start failed: %@", String(describing: error))
             meeting.status = .failed
             meeting.summary = ["Recording could not start: \(error.localizedDescription)"]
             lastError = error.localizedDescription

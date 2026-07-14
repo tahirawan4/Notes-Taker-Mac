@@ -58,16 +58,22 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
+# Bind Info.plist into the signature so TCC tracks a stable app identity.
+codesign --force --deep --sign - "$APP_DIR"
+echo "Signed $APP_DIR (adhoc)"
+
 echo "Created $APP_DIR"
 
 if [[ "$INSTALL_TO_APPLICATIONS" == "true" ]]; then
   /usr/bin/ditto "$APP_DIR" "/Applications/$APP_NAME.app"
+  codesign --force --deep --sign - "/Applications/$APP_NAME.app"
   echo "Installed to /Applications/$APP_NAME.app"
 else
   read -r -p "Copy $APP_NAME.app to /Applications? [y/N] " answer
   case "$answer" in
     [yY][eE][sS]|[yY])
       /usr/bin/ditto "$APP_DIR" "/Applications/$APP_NAME.app"
+      codesign --force --deep --sign - "/Applications/$APP_NAME.app"
       echo "Installed to /Applications/$APP_NAME.app"
       ;;
     *)
@@ -77,3 +83,4 @@ else
 fi
 
 echo "Done."
+echo "If Screen Recording fails after install: System Settings → Privacy & Security → Screen & System Audio Recording → remove NotesTaker (−), add /Applications/NotesTaker.app (+), then relaunch."

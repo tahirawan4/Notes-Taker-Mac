@@ -17,8 +17,9 @@ struct RecordingToolbar: View {
                     if let lastError = recorder.lastError {
                         Text(lastError)
                             .font(.caption)
-                            .lineLimit(1)
+                            .lineLimit(2)
                             .foregroundStyle(.coral)
+                            .help(lastError)
                     }
                 }
             }
