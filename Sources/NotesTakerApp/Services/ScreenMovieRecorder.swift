@@ -48,6 +48,11 @@ final class ScreenMovieRecorder: NSObject {
             Bundle.main.bundleURL.path
         )
 
+        guard preflight else {
+            NSLog("[NotesTaker] Screen capture preflight denied; not calling ScreenCaptureKit to avoid repeated system prompt")
+            throw ScreenMovieRecorderError.screenPermissionDenied
+        }
+
         let content: SCShareableContent
         do {
             content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
