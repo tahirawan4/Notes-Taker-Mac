@@ -60,6 +60,15 @@ struct MeetingProcessingService {
             processed.summary = ["Transcript generated successfully. Review the transcript tab for details."]
         }
 
+        let settings = AISettingsStore.currentSnapshot()
+        if settings.isAIEnabled {
+            do {
+                processed = try await AINotesService().enhance(meeting: processed, transcript: cleaned, settings: settings)
+            } catch {
+                processed.openQuestions.append("AI enhancement was skipped: \(error.localizedDescription)")
+            }
+        }
+
         return processed
     }
 

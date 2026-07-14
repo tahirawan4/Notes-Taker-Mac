@@ -3,7 +3,9 @@ import SwiftUI
 struct RecordingToolbar: View {
     @Environment(MeetingStore.self) private var store
     @Environment(RecordingService.self) private var recorder
+    @Environment(AISettingsStore.self) private var aiSettings
     @State private var source: MeetingSource = .zoom
+    @State private var isShowingAISettings = false
 
     var body: some View {
         HStack(spacing: 14) {
@@ -36,6 +38,16 @@ struct RecordingToolbar: View {
             .disabled(recorder.isRecording)
 
             Button {
+                isShowingAISettings = true
+            } label: {
+                Image(systemName: aiSettings.snapshot.isAIEnabled ? "sparkles" : "gearshape")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(aiSettings.snapshot.isAIEnabled ? .indigo : AppColors.textMuted)
+            .help("AI notes settings")
+
+            Button {
                 toggleRecording()
             } label: {
                 Label(recorder.isRecording ? "Stop" : "Start Capture", systemImage: recorder.isRecording ? "stop.fill" : "play.fill")
@@ -50,6 +62,10 @@ struct RecordingToolbar: View {
             Rectangle()
                 .fill(Color.black.opacity(0.08))
                 .frame(height: 1)
+        }
+        .sheet(isPresented: $isShowingAISettings) {
+            AISettingsView()
+                .environment(aiSettings)
         }
     }
 

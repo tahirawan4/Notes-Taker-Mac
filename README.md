@@ -12,6 +12,7 @@ It is designed for a Mac workflow where you can keep a lightweight meeting assis
 - Meeting detail screen with video area, notes, action items, and transcript tabs
 - Local meeting storage in macOS Application Support
 - Local screen recording saved as `.mov`
+- Optional AI-enhanced notes using the user's own OpenAI or Claude API key
 - Modern PDF export for:
   - meeting notes
   - full transcript
@@ -120,11 +121,26 @@ When recording, macOS may ask for:
 - Speech Recognition
 - Accessibility, only for automatic Zoom or Chrome meeting detection
 
+## Optional AI Notes
+
+NotesTaker works without any AI API key. In local mode, it uses Apple Speech for transcription and built-in rules for first-pass notes/action items.
+
+For stronger summaries and cleaner action items:
+
+1. Open NotesTaker.
+2. Click the gear/sparkle button in the top toolbar.
+3. Choose `OpenAI` or `Claude`.
+4. Paste your API key.
+5. Save settings.
+6. Open a saved meeting and click **Process Recording**.
+
+API keys are stored in macOS Keychain. Transcript text is sent to the selected AI provider only when a key is configured and the user processes a recording.
+
 ## Current Recording Status
 
 The current `RecordingService` records the main screen and microphone audio to a local `.mov` file using native macOS capture APIs. Meeting records link to the saved video so it can be played back inside the app.
 
-Saved recordings can be processed with the **Process Recording** button. The current processing flow extracts audio from the saved recording, uses Apple Speech for transcription, and generates first-pass notes and action items.
+Saved recordings can be processed with the **Process Recording** button. The current processing flow extracts audio from the saved recording, uses Apple Speech for transcription, and generates first-pass notes and action items. If an OpenAI or Claude key is configured, NotesTaker sends the transcript to that provider for improved summary, decisions, risks, questions, and action items.
 
 Still pending / limited:
 

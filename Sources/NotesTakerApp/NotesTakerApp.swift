@@ -4,12 +4,14 @@ import SwiftUI
 struct NotesTakerApp: App {
     @State private var store = MeetingStore()
     @State private var recorder = RecordingService()
+    @State private var aiSettings = AISettingsStore()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(store)
                 .environment(recorder)
+                .environment(aiSettings)
                 .frame(minWidth: 1120, minHeight: 720)
         }
         .windowStyle(.hiddenTitleBar)
@@ -18,6 +20,7 @@ struct NotesTakerApp: App {
             MenuBarContent()
                 .environment(store)
                 .environment(recorder)
+                .environment(aiSettings)
         }
     }
 }
