@@ -66,6 +66,16 @@ final class MeetingStore {
         selectedMeetingID = updated.id
         save()
     }
+
+    func addMeeting(title: String, source: MeetingSource, startedAt: Date) {
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let meeting = Meeting.blank(
+            title: cleanTitle.isEmpty ? "Untitled Meeting" : cleanTitle,
+            source: source,
+            startedAt: startedAt
+        )
+        upsert(meeting)
+    }
 }
 
 private extension JSONEncoder {

@@ -90,6 +90,24 @@ struct Meeting: Identifiable, Codable, Hashable {
         )
     }
 
+    static func blank(title: String, source: MeetingSource, startedAt: Date) -> Meeting {
+        Meeting(
+            title: title,
+            startedAt: startedAt,
+            endedAt: nil,
+            source: source,
+            status: .ready,
+            videoPath: nil,
+            audioPath: nil,
+            summary: [],
+            decisions: [],
+            risks: [],
+            openQuestions: [],
+            actionItems: [],
+            transcript: []
+        )
+    }
+
     static let sample = Meeting(
         title: "Product Roadmap Sync",
         startedAt: Date().addingTimeInterval(-3_900),
