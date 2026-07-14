@@ -5,6 +5,8 @@ struct MeetingDetailView: View {
     @Environment(MeetingStore.self) private var store
     let meeting: Meeting
     @State private var exportMessage: String?
+    @State private var processingMessage: String?
+    @State private var isProcessing = false
 
     var body: some View {
         ScrollView {
@@ -65,10 +67,21 @@ struct MeetingDetailView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.indigo)
+
+            if canProcess {
+                Button {
+                    processRecording()
+                } label: {
+                    Label(isProcessing ? "Processing" : "Process Recording", systemImage: "waveform.badge.magnifyingglass")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.teal)
+                .disabled(isProcessing)
+            }
         }
         .overlay(alignment: .bottomTrailing) {
-            if let exportMessage {
-                Text(exportMessage)
+            if let statusMessage {
+                Text(statusMessage)
                     .font(.caption)
                     .foregroundStyle(AppColors.textMuted)
                     .offset(y: 22)
@@ -136,6 +149,42 @@ struct MeetingDetailView: View {
             return meeting.summary.first ?? "Check Screen Recording and Microphone permissions, then try again."
         }
         return "Start Capture will save a local screen recording here. Transcript and AI notes require transcription processing after recording."
+    }
+
+    private var canProcess: Bool {
+        meeting.status == .ready &&
+        meeting.videoPath != nil &&
+        !isProcessing
+    }
+
+    private var statusMessage: String? {
+        processingMessage ?? exportMessage
+    }
+
+    private func processRecording() {
+        isProcessing = true
+        processingMessage = "Processing recording..."
+        store.updateMeetingStatus(id: meeting.id, status: .processing, summary: ["Processing recording for transcript and notes..."])
+
+        Task {
+            do {
+                let processed = try await MeetingProcessingService().process(meeting)
+                await MainActor.run {
+                    store.upsert(processed)
+                    processingMessage = "Transcript and notes generated"
+                    isProcessing = false
+                }
+            } catch {
+                await MainActor.run {
+                    var failed = meeting
+                    failed.status = .failed
+                    failed.summary = ["Processing failed: \(error.localizedDescription)"]
+                    store.upsert(failed)
+                    processingMessage = error.localizedDescription
+                    isProcessing = false
+                }
+            }
+        }
     }
 
     private func export(_ kind: PDFExportKind) {
