@@ -51,6 +51,10 @@ enum PDFExporter {
     }
 
     private static func drawNotes(meeting: Meeting, cursor: inout PDFCursor) {
+        let manualNotes = meeting.manualNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !manualNotes.isEmpty {
+            cursor.drawSection("My Notes", items: [manualNotes], accent: .teal)
+        }
         cursor.drawSection("Executive Summary", items: meeting.summary, accent: .teal)
         cursor.drawSection("Decisions", items: meeting.decisions, accent: .indigo)
         cursor.drawSection("Risks & Blockers", items: meeting.risks, accent: .coral)

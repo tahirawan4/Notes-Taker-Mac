@@ -63,10 +63,31 @@ struct Meeting: Identifiable, Codable, Hashable {
     var decisions: [String]
     var risks: [String]
     var openQuestions: [String]
+    var manualNotes: String
     var actionItems: [MeetingActionItem]
     var transcript: [TranscriptSegment]
     var createdAt = Date()
     var updatedAt = Date()
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case startedAt
+        case endedAt
+        case source
+        case status
+        case videoPath
+        case audioPath
+        case summary
+        case decisions
+        case risks
+        case openQuestions
+        case manualNotes
+        case actionItems
+        case transcript
+        case createdAt
+        case updatedAt
+    }
 
     var duration: TimeInterval {
         (endedAt ?? Date()).timeIntervalSince(startedAt)
@@ -85,6 +106,7 @@ struct Meeting: Identifiable, Codable, Hashable {
             decisions: [],
             risks: [],
             openQuestions: [],
+            manualNotes: "",
             actionItems: [],
             transcript: []
         )
@@ -103,6 +125,7 @@ struct Meeting: Identifiable, Codable, Hashable {
             decisions: [],
             risks: [],
             openQuestions: [],
+            manualNotes: "",
             actionItems: [],
             transcript: []
         )
@@ -134,6 +157,7 @@ struct Meeting: Identifiable, Codable, Hashable {
             "Should transcription run locally, in the cloud, or as a user-selectable setting?",
             "Which export formats should follow PDF: DOCX, Markdown, or Notion?"
         ],
+        manualNotes: "Add your own meeting notes here after the call. These notes are saved with the meeting and included in copy/PDF export.",
         actionItems: [
             MeetingActionItem(owner: "Tahir", task: "Validate manual capture flow on Zoom and Chrome.", dueDate: Date().addingTimeInterval(172_800), priority: .high, status: .open, evidenceTimestamp: 480),
             MeetingActionItem(owner: "Design", task: "Finalize PDF color palette and typography.", dueDate: Date().addingTimeInterval(259_200), priority: .medium, status: .inProgress, evidenceTimestamp: 920)
@@ -144,4 +168,27 @@ struct Meeting: Identifiable, Codable, Hashable {
             TranscriptSegment(startTime: 28, endTime: 48, speaker: "Engineering", text: "The right first step is manual capture with a reliable meeting library and polished PDF output.")
         ]
     )
+}
+
+extension Meeting {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        title = try container.decode(String.self, forKey: .title)
+        startedAt = try container.decode(Date.self, forKey: .startedAt)
+        endedAt = try container.decodeIfPresent(Date.self, forKey: .endedAt)
+        source = try container.decode(MeetingSource.self, forKey: .source)
+        status = try container.decode(MeetingStatus.self, forKey: .status)
+        videoPath = try container.decodeIfPresent(String.self, forKey: .videoPath)
+        audioPath = try container.decodeIfPresent(String.self, forKey: .audioPath)
+        summary = try container.decodeIfPresent([String].self, forKey: .summary) ?? []
+        decisions = try container.decodeIfPresent([String].self, forKey: .decisions) ?? []
+        risks = try container.decodeIfPresent([String].self, forKey: .risks) ?? []
+        openQuestions = try container.decodeIfPresent([String].self, forKey: .openQuestions) ?? []
+        manualNotes = try container.decodeIfPresent(String.self, forKey: .manualNotes) ?? ""
+        actionItems = try container.decodeIfPresent([MeetingActionItem].self, forKey: .actionItems) ?? []
+        transcript = try container.decodeIfPresent([TranscriptSegment].self, forKey: .transcript) ?? []
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+    }
 }

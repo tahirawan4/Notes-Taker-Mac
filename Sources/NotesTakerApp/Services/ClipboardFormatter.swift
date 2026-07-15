@@ -1,9 +1,18 @@
 import Foundation
 
 enum ClipboardFormatter {
+    static func manualNotes(from meeting: Meeting) -> String {
+        let notes = meeting.manualNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        return [
+            header(for: meeting, title: "My Notes"),
+            notes.isEmpty ? "No personal notes yet." : notes
+        ].joined(separator: "\n\n")
+    }
+
     static func notes(from meeting: Meeting) -> String {
         [
             header(for: meeting, title: "Meeting Notes"),
+            manualNotesSection(from: meeting),
             section("Executive Summary", items: meeting.summary),
             section("Decisions", items: meeting.decisions),
             section("Risks & Blockers", items: meeting.risks),
@@ -60,6 +69,12 @@ enum ClipboardFormatter {
     private static func section(_ title: String, items: [String]) -> String {
         guard !items.isEmpty else { return "" }
         return "\(title)\n" + items.map { "- \($0)" }.joined(separator: "\n")
+    }
+
+    private static func manualNotesSection(from meeting: Meeting) -> String {
+        let notes = meeting.manualNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !notes.isEmpty else { return "" }
+        return "My Notes\n\(notes)"
     }
 
     private static func timestamp(_ seconds: TimeInterval) -> String {

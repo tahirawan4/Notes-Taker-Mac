@@ -79,6 +79,15 @@ final class MeetingStore {
         save()
     }
 
+    func updateManualNotes(id: Meeting.ID, notes: String) {
+        guard let index = meetings.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        meetings[index].manualNotes = notes
+        meetings[index].updatedAt = Date()
+        save()
+    }
+
     func addMeeting(title: String, source: MeetingSource, startedAt: Date) {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let meeting = Meeting.blank(

@@ -7,6 +7,8 @@ struct MeetingDetailView: View {
     @State private var exportMessage: String?
     @State private var processingMessage: String?
     @State private var copyMessage: String?
+    @State private var manualNotesDraft = ""
+    @State private var manualNotesSavedMessage: String?
     @State private var isProcessing = false
 
     var body: some View {
@@ -14,6 +16,7 @@ struct MeetingDetailView: View {
             VStack(alignment: .leading, spacing: 22) {
                 header
                 videoPanel
+                manualNotesPanel
 
                 TabView {
                     NotesOverview(meeting: meeting)
@@ -29,6 +32,18 @@ struct MeetingDetailView: View {
         }
         .background(AppColors.canvas)
         .preferredColorScheme(.light)
+        .onAppear {
+            manualNotesDraft = meeting.manualNotes
+        }
+        .onChange(of: meeting.id) { _, _ in
+            manualNotesDraft = meeting.manualNotes
+            manualNotesSavedMessage = nil
+        }
+        .onChange(of: meeting.manualNotes) { _, newValue in
+            if !isManualNotesDirty {
+                manualNotesDraft = newValue
+            }
+        }
     }
 
     private var header: some View {
@@ -53,6 +68,11 @@ struct MeetingDetailView: View {
             Spacer()
 
             Menu {
+                Button {
+                    copyToClipboard(.manualNotes)
+                } label: {
+                    Label("Copy My Notes", systemImage: "note.text")
+                }
                 Button {
                     copyToClipboard(.notes)
                 } label: {
@@ -143,6 +163,72 @@ struct MeetingDetailView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
+    private var manualNotesPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Label("My Notes", systemImage: "note.text")
+                    .font(.headline)
+                    .foregroundStyle(AppColors.text)
+                Text("Editable after the meeting")
+                    .font(.caption)
+                    .foregroundStyle(AppColors.textMuted)
+
+                Spacer()
+
+                if let manualNotesSavedMessage {
+                    Text(manualNotesSavedMessage)
+                        .font(.caption)
+                        .foregroundStyle(.teal)
+                }
+
+                Button {
+                    manualNotesDraft = meeting.manualNotes
+                    manualNotesSavedMessage = "Reverted"
+                } label: {
+                    Label("Revert", systemImage: "arrow.uturn.backward")
+                }
+                .disabled(!isManualNotesDirty)
+
+                Button {
+                    saveManualNotes()
+                } label: {
+                    Label("Save Notes", systemImage: "checkmark")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.teal)
+                .disabled(!isManualNotesDirty)
+            }
+
+            TextEditor(text: $manualNotesDraft)
+                .font(.system(size: 14))
+                .foregroundStyle(AppColors.text)
+                .scrollContentBackground(.hidden)
+                .padding(10)
+                .frame(minHeight: 150)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 8))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isManualNotesDirty ? Color.teal.opacity(0.55) : Color.black.opacity(0.07), lineWidth: 1)
+                }
+                .overlay(alignment: .topLeading) {
+                    if manualNotesDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("Write your own follow-up notes, observations, reminders, or client context here...")
+                            .font(.system(size: 14))
+                            .foregroundStyle(AppColors.textSoft)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 18)
+                            .allowsHitTesting(false)
+                    }
+                }
+        }
+        .padding(18)
+        .background(AppColors.surface, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+        }
+    }
+
     private func savedRecordingView(path: String) -> some View {
         let url = URL(filePath: path)
         return VStack(spacing: 14) {
@@ -189,6 +275,10 @@ struct MeetingDetailView: View {
         processingMessage ?? exportMessage ?? copyMessage
     }
 
+    private var isManualNotesDirty: Bool {
+        manualNotesDraft != meeting.manualNotes
+    }
+
     private func processRecording() {
         isProcessing = true
         processingMessage = "Processing recording..."
@@ -232,6 +322,9 @@ struct MeetingDetailView: View {
         let label: String
 
         switch kind {
+        case .manualNotes:
+            value = ClipboardFormatter.manualNotes(from: meeting)
+            label = "my notes"
         case .notes:
             value = ClipboardFormatter.notes(from: meeting)
             label = "notes"
@@ -252,6 +345,13 @@ struct MeetingDetailView: View {
         exportMessage = nil
     }
 
+    private func saveManualNotes() {
+        store.updateManualNotes(id: meeting.id, notes: manualNotesDraft)
+        manualNotesSavedMessage = "Saved"
+        copyMessage = nil
+        exportMessage = nil
+    }
+
     private func formatDuration(_ duration: TimeInterval) -> String {
         let minutes = max(1, Int(duration / 60))
         let hours = minutes / 60
@@ -261,6 +361,7 @@ struct MeetingDetailView: View {
 }
 
 private enum ClipboardKind {
+    case manualNotes
     case notes
     case actions
     case transcript
