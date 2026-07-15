@@ -81,11 +81,14 @@ private struct PDFCursor {
 
     mutating func beginPage() {
         context.beginPDFPage(nil)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
         y = page.height - 54
         fillPageBackground()
     }
 
     mutating func endPage() {
+        NSGraphicsContext.restoreGraphicsState()
         context.endPDFPage()
     }
 
@@ -100,7 +103,7 @@ private struct PDFCursor {
     }
 
     func fillPageBackground() {
-        NSColor.paper.setFill()
+        context.setFillColor(NSColor.paper.cgColor)
         context.fill(page)
     }
 
@@ -130,7 +133,7 @@ private struct PDFCursor {
     }
 
     mutating func drawRule(color: NSColor) {
-        color.setFill()
+        context.setFillColor(color.cgColor)
         context.fill(CGRect(x: 54, y: y - 2, width: page.width - 108, height: 2))
         y -= 26
     }
@@ -155,7 +158,7 @@ private struct PDFCursor {
         let rect = CGRect(x: 54, y: y - height, width: width, height: height)
         NSColor.white.withAlphaComponent(0.86).setFill()
         NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8).fill()
-        accent.setFill()
+        context.setFillColor(accent.cgColor)
         context.fill(CGRect(x: rect.minX, y: rect.minY, width: 4, height: rect.height))
         text.draw(in: CGRect(x: rect.minX + 18, y: rect.minY + 12, width: rect.width - 34, height: textHeight), withAttributes: attributes)
         y -= height + 8
@@ -184,15 +187,28 @@ private struct PDFCursor {
     }
 
     mutating func drawTranscriptSegment(_ segment: TranscriptSegment) {
-        let rect = CGRect(x: 54, y: y - 68, width: page.width - 108, height: 68)
+        let transcriptTextAttributes = paragraphAttributes(size: 9.5, weight: .regular, color: .navy, lineSpacing: 2)
+        let textWidth = page.width - 206
+        let textHeight = max(
+            32,
+            segment.text.boundingRect(
+                with: CGSize(width: textWidth, height: 10_000),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: transcriptTextAttributes
+            ).height
+        )
+        let height = max(68, textHeight + 40)
+        ensureSpace(height + 8)
+
+        let rect = CGRect(x: 54, y: y - height, width: page.width - 108, height: height)
         NSColor.white.withAlphaComponent(0.86).setFill()
         NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8).fill()
 
         let time = formatTimestamp(segment.startTime)
-        time.draw(in: CGRect(x: rect.minX + 14, y: rect.minY + 36, width: 58, height: 16), withAttributes: textAttributes(size: 9, weight: .bold, color: .teal))
-        segment.speaker.draw(in: CGRect(x: rect.minX + 84, y: rect.minY + 38, width: rect.width - 98, height: 16), withAttributes: textAttributes(size: 10, weight: .bold, color: .navy))
-        segment.text.draw(in: CGRect(x: rect.minX + 84, y: rect.minY + 14, width: rect.width - 98, height: 32), withAttributes: paragraphAttributes(size: 9.5, weight: .regular, color: .navy, lineSpacing: 2))
-        y -= 76
+        time.draw(in: CGRect(x: rect.minX + 14, y: rect.maxY - 32, width: 58, height: 16), withAttributes: textAttributes(size: 9, weight: .bold, color: .teal))
+        segment.speaker.draw(in: CGRect(x: rect.minX + 84, y: rect.maxY - 30, width: rect.width - 98, height: 16), withAttributes: textAttributes(size: 10, weight: .bold, color: .navy))
+        segment.text.draw(in: CGRect(x: rect.minX + 84, y: rect.minY + 14, width: textWidth, height: textHeight), withAttributes: transcriptTextAttributes)
+        y -= height + 8
     }
 
     private func drawTableRow(_ values: [String], in rect: CGRect, color: NSColor, bold: Bool) {

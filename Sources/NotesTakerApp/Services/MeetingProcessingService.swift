@@ -50,11 +50,12 @@ struct MeetingProcessingService {
         processed.audioPath = audioURL.path
         processed.status = .ready
         processed.transcript = makeTranscriptSegments(from: cleaned, duration: max(meeting.duration, 1))
-        processed.summary = makeSummary(from: cleaned)
-        processed.decisions = findSentences(in: cleaned, matching: ["decided", "decision", "agreed", "approved", "confirmed", "we will", "we'll"])
-        processed.risks = findSentences(in: cleaned, matching: ["risk", "blocked", "blocker", "issue", "problem", "concern", "delay"])
-        processed.openQuestions = sentences(from: cleaned).filter { $0.contains("?") }.prefixArray(4)
-        processed.actionItems = makeActionItems(from: cleaned)
+        let notes = makeLocalNotes(from: cleaned)
+        processed.summary = notes.summary
+        processed.decisions = notes.decisions
+        processed.risks = notes.risks
+        processed.openQuestions = notes.openQuestions
+        processed.actionItems = notes.actionItems
 
         if processed.summary.isEmpty {
             processed.summary = ["Transcript generated successfully. Review the transcript tab for details."]
@@ -157,19 +158,50 @@ struct MeetingProcessingService {
         }
     }
 
-    private func makeSummary(from text: String) -> [String] {
+    private func makeLocalNotes(from text: String) -> LocalNotes {
         let all = sentences(from: text)
+        let decisions = findSentences(
+            in: text,
+            matching: ["decided", "decision", "agreed to", "approved", "confirmed", "signed off", "finalized"]
+        )
+        let risks = findSentences(
+            in: text,
+            matching: ["risk", "blocked", "blocker", "issue", "problem", "concern", "delay", "dependency", "challenge"]
+        )
+        let openQuestions = all.filter { $0.contains("?") }.prefixArray(4)
+        let actionItems = makeActionItems(from: text)
+
+        let reserved = Set((decisions + risks + openQuestions + actionItems.map(\.task)).map(normalized))
+        let summary = makeSummary(from: text, excluding: reserved)
+
+        return LocalNotes(
+            summary: summary,
+            decisions: decisions,
+            risks: risks,
+            openQuestions: openQuestions,
+            actionItems: actionItems
+        )
+    }
+
+    private func makeSummary(from text: String, excluding reserved: Set<String>) -> [String] {
+        let all = sentences(from: text)
+        let available = all.filter { !reserved.contains(normalized($0)) }
         let priority = all.filter { sentence in
-            contains(sentence, anyOf: ["discussed", "reviewed", "agreed", "decided", "plan", "priority", "next"])
+            !reserved.contains(normalized(sentence)) &&
+            contains(sentence, anyOf: ["discussed", "reviewed", "covered", "talked about", "plan", "priority", "progress", "update", "goal"])
         }
-        let chosen = (priority.isEmpty ? all : priority).prefixArray(5)
+
+        let chosen = (priority.isEmpty ? available : priority).prefixArray(5)
+        if chosen.isEmpty, let first = all.first {
+            return ["The discussion covered: \(first)"]
+        }
         return chosen.map { $0 }
     }
 
     private func makeActionItems(from text: String) -> [MeetingActionItem] {
         let actionSentences = findSentences(
             in: text,
-            matching: ["action", "todo", "to do", "follow up", "need to", "needs to", "please", "should", "we will", "i will", "next step"]
+            matching: ["action", "todo", "to do", "follow up", "need to", "needs to", "please", "should", "we will", "we'll", "i will", "i'll", "next step", "assign", "send", "share"]
         )
 
         return actionSentences.prefix(8).map { sentence in
@@ -204,6 +236,13 @@ struct MeetingProcessingService {
         return keywords.contains { value.contains($0) }
     }
 
+    private func normalized(_ sentence: String) -> String {
+        sentence
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .filter { $0.isLetter || $0.isNumber || $0.isWhitespace }
+    }
+
     private func sentences(from text: String) -> [String] {
         let pattern = #"[^.!?\n]+[.!?]?"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
@@ -232,4 +271,12 @@ private extension Array {
     func prefixArray(_ maxLength: Int) -> [Element] {
         Array(prefix(maxLength))
     }
+}
+
+private struct LocalNotes {
+    var summary: [String]
+    var decisions: [String]
+    var risks: [String]
+    var openQuestions: [String]
+    var actionItems: [MeetingActionItem]
 }

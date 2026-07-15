@@ -6,6 +6,7 @@ struct MeetingDetailView: View {
     let meeting: Meeting
     @State private var exportMessage: String?
     @State private var processingMessage: String?
+    @State private var copyMessage: String?
     @State private var isProcessing = false
 
     var body: some View {
@@ -50,6 +51,33 @@ struct MeetingDetailView: View {
             }
 
             Spacer()
+
+            Menu {
+                Button {
+                    copyToClipboard(.notes)
+                } label: {
+                    Label("Copy Notes", systemImage: "doc.on.doc")
+                }
+                Button {
+                    copyToClipboard(.actions)
+                } label: {
+                    Label("Copy Action Items", systemImage: "checklist")
+                }
+                Button {
+                    copyToClipboard(.transcript)
+                } label: {
+                    Label("Copy Transcript", systemImage: "quote.bubble")
+                }
+                Divider()
+                Button {
+                    copyToClipboard(.fullDiscussion)
+                } label: {
+                    Label("Copy Full Discussion", systemImage: "rectangle.stack")
+                }
+            } label: {
+                Label("Copy", systemImage: "doc.on.clipboard")
+            }
+            .buttonStyle(.bordered)
 
             Menu {
                 Button {
@@ -158,7 +186,7 @@ struct MeetingDetailView: View {
     }
 
     private var statusMessage: String? {
-        processingMessage ?? exportMessage
+        processingMessage ?? exportMessage ?? copyMessage
     }
 
     private func processRecording() {
@@ -191,11 +219,37 @@ struct MeetingDetailView: View {
         do {
             let url = try PDFExporter.export(meeting: meeting, kind: kind)
             exportMessage = "Exported to \(url.lastPathComponent)"
+            copyMessage = nil
         } catch is CancellationError {
             exportMessage = nil
         } catch {
             exportMessage = "Export failed: \(error.localizedDescription)"
         }
+    }
+
+    private func copyToClipboard(_ kind: ClipboardKind) {
+        let value: String
+        let label: String
+
+        switch kind {
+        case .notes:
+            value = ClipboardFormatter.notes(from: meeting)
+            label = "notes"
+        case .actions:
+            value = ClipboardFormatter.actions(from: meeting)
+            label = "action items"
+        case .transcript:
+            value = ClipboardFormatter.transcript(from: meeting)
+            label = "transcript"
+        case .fullDiscussion:
+            value = ClipboardFormatter.fullDiscussion(from: meeting)
+            label = "discussion"
+        }
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
+        copyMessage = "Copied \(label) to clipboard"
+        exportMessage = nil
     }
 
     private func formatDuration(_ duration: TimeInterval) -> String {
@@ -204,4 +258,11 @@ struct MeetingDetailView: View {
         let remaining = minutes % 60
         return hours > 0 ? "\(hours)h \(remaining)m" : "\(minutes)m"
     }
+}
+
+private enum ClipboardKind {
+    case notes
+    case actions
+    case transcript
+    case fullDiscussion
 }
