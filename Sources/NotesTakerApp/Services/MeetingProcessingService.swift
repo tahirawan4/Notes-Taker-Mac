@@ -47,11 +47,16 @@ struct MeetingProcessingService {
         }
 
         try Task.checkCancellation()
-        await report("Extracting audio from recording...", 0.15, progress)
-        let audioURL = try await extractAudio(from: videoURL, meetingID: meeting.id)
-        try Task.checkCancellation()
-        await report("Transcribing speech with Apple Speech...", 0.45, progress)
-        let transcriptText = try await transcribe(audioURL: audioURL)
+        let asset = AVURLAsset(url: videoURL)
+        let assetDuration = try await asset.load(.duration)
+        let totalDuration = max(CMTimeGetSeconds(assetDuration), meeting.duration, 1)
+        let chunkedResult = try await transcribeInChunks(
+            asset: asset,
+            meetingID: meeting.id,
+            totalDuration: totalDuration,
+            progress: progress
+        )
+        let transcriptText = chunkedResult.transcript
         let cleaned = transcriptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else {
             throw MeetingProcessingError.emptyTranscript
@@ -60,9 +65,9 @@ struct MeetingProcessingService {
         try Task.checkCancellation()
         await report("Building transcript sections...", 0.72, progress)
         var processed = meeting
-        processed.audioPath = audioURL.path
+        processed.audioPath = chunkedResult.audioDirectory.path
         processed.status = .ready
-        processed.transcript = makeTranscriptSegments(from: cleaned, duration: max(meeting.duration, 1))
+        processed.transcript = makeTranscriptSegments(from: cleaned, duration: totalDuration)
         try Task.checkCancellation()
         await report("Extracting summary and action items...", 0.82, progress)
         let notes = makeLocalNotes(from: cleaned)
@@ -95,18 +100,77 @@ struct MeetingProcessingService {
         await progress?(ProgressUpdate(message: message, fraction: fraction))
     }
 
-    private func extractAudio(from videoURL: URL, meetingID: UUID) async throws -> URL {
-        let outputURL = try processingDirectory()
-            .appending(path: "\(meetingID.uuidString).m4a")
+    private func transcribeInChunks(
+        asset: AVURLAsset,
+        meetingID: UUID,
+        totalDuration: TimeInterval,
+        progress: ProgressHandler?
+    ) async throws -> ChunkedTranscriptionResult {
+        let chunkLength: TimeInterval = 300
+        let chunkCount = max(1, Int(ceil(totalDuration / chunkLength)))
+        let audioDirectory = try prepareChunkDirectory(meetingID: meetingID)
+        var transcripts: [String] = []
+
+        await report("Splitting recording into \(chunkCount) audio chunk\(chunkCount == 1 ? "" : "s")...", 0.10, progress)
+
+        for index in 0..<chunkCount {
+            try Task.checkCancellation()
+            let start = Double(index) * chunkLength
+            let duration = min(chunkLength, totalDuration - start)
+            let current = index + 1
+            let baseProgress = 0.12 + (Double(index) / Double(chunkCount)) * 0.56
+
+            await report("Exporting audio chunk \(current) of \(chunkCount)...", baseProgress, progress)
+            let chunkURL = try await exportAudioChunk(
+                asset: asset,
+                meetingID: meetingID,
+                index: current,
+                start: start,
+                duration: duration,
+                directory: audioDirectory
+            )
+
+            try Task.checkCancellation()
+            await report("Transcribing chunk \(current) of \(chunkCount)...", baseProgress + (0.28 / Double(chunkCount)), progress)
+            let chunkText: String
+            do {
+                chunkText = try await transcribe(audioURL: chunkURL).trimmingCharacters(in: .whitespacesAndNewlines)
+            } catch MeetingProcessingError.transcriptionFailed {
+                await report("Chunk \(current) had no usable speech. Continuing...", baseProgress + (0.40 / Double(chunkCount)), progress)
+                continue
+            }
+            if !chunkText.isEmpty {
+                transcripts.append(chunkText)
+            }
+        }
+
+        return ChunkedTranscriptionResult(
+            audioDirectory: audioDirectory,
+            transcript: transcripts.joined(separator: " ")
+        )
+    }
+
+    private func exportAudioChunk(
+        asset: AVURLAsset,
+        meetingID: UUID,
+        index: Int,
+        start: TimeInterval,
+        duration: TimeInterval,
+        directory: URL
+    ) async throws -> URL {
+        let outputURL = directory.appending(path: "\(meetingID.uuidString)-chunk-\(String(format: "%03d", index)).m4a")
         try? FileManager.default.removeItem(at: outputURL)
 
-        let asset = AVURLAsset(url: videoURL)
         guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
             throw MeetingProcessingError.audioExportFailed("Audio export session could not be created.")
         }
         session.outputURL = outputURL
         session.outputFileType = .m4a
         session.shouldOptimizeForNetworkUse = false
+        session.timeRange = CMTimeRange(
+            start: CMTime(seconds: start, preferredTimescale: 600),
+            duration: CMTime(seconds: duration, preferredTimescale: 600)
+        )
 
         return try await withCheckedThrowingContinuation { continuation in
             session.exportAsynchronously {
@@ -120,6 +184,14 @@ struct MeetingProcessingService {
                 }
             }
         }
+    }
+
+    private func prepareChunkDirectory(meetingID: UUID) throws -> URL {
+        let directory = try processingDirectory()
+            .appending(path: meetingID.uuidString, directoryHint: .isDirectory)
+        try? FileManager.default.removeItem(at: directory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
     }
 
     private func transcribe(audioURL: URL) async throws -> String {
@@ -301,4 +373,9 @@ private struct LocalNotes {
     var risks: [String]
     var openQuestions: [String]
     var actionItems: [MeetingActionItem]
+}
+
+private struct ChunkedTranscriptionResult {
+    var audioDirectory: URL
+    var transcript: String
 }
