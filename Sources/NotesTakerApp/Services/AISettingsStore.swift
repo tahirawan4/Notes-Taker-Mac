@@ -54,7 +54,7 @@ final class AISettingsStore {
         provider = AIProvider(rawValue: defaults.string(forKey: Self.providerKey) ?? "") ?? .local
         openAIModel = defaults.string(forKey: Self.openAIModelKey) ?? "gpt-4.1-mini"
         claudeModel = defaults.string(forKey: Self.claudeModelKey) ?? "claude-sonnet-4-5"
-        geminiModel = defaults.string(forKey: Self.geminiModelKey) ?? "gemini-2.5-flash"
+        geminiModel = Self.currentGeminiModel(from: defaults.string(forKey: Self.geminiModelKey))
         openAIKey = KeychainStore.read(service: Self.keychainService, account: "openai")
         claudeKey = KeychainStore.read(service: Self.keychainService, account: "claude")
         geminiKey = KeychainStore.read(service: Self.keychainService, account: "gemini")
@@ -93,5 +93,13 @@ final class AISettingsStore {
 
     static func currentSnapshot() -> AISettingsSnapshot {
         AISettingsStore().snapshot
+    }
+
+    private static func currentGeminiModel(from storedValue: String?) -> String {
+        let value = storedValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if value.isEmpty || value == "gemini-2.5-flash" {
+            return "gemini-3.5-flash"
+        }
+        return value
     }
 }

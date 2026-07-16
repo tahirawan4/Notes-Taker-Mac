@@ -109,8 +109,8 @@ struct AINotesService {
 
     private func callGemini(prompt: String, settings: AISettingsSnapshot) async throws -> String {
         let model = settings.geminiModel.trimmingCharacters(in: .whitespacesAndNewlines)
-        let encodedModel = (model.isEmpty ? "gemini-2.5-flash" : model)
-            .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "gemini-2.5-flash"
+        let encodedModel = (model.isEmpty ? "gemini-3.5-flash" : model)
+            .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "gemini-3.5-flash"
         let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(encodedModel):generateContent")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -139,9 +139,29 @@ struct AINotesService {
     private func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else { return }
         guard (200..<300).contains(http.statusCode) else {
-            let detail = String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)"
+            let detail = extractErrorMessage(from: data) ?? "HTTP \(http.statusCode)"
             throw AINotesError.requestFailed(detail)
         }
+    }
+
+    private func extractErrorMessage(from data: Data) -> String? {
+        guard
+            let object = try? JSONSerialization.jsonObject(with: data),
+            let dict = object as? [String: Any]
+        else {
+            return String(data: data, encoding: .utf8)
+        }
+
+        if let error = dict["error"] as? [String: Any] {
+            if let message = error["message"] as? String, !message.isEmpty {
+                return message
+            }
+            if let status = error["status"] as? String, !status.isEmpty {
+                return status
+            }
+        }
+
+        return String(data: data, encoding: .utf8)
     }
 
     private func extractText(from data: Data) throws -> String {
