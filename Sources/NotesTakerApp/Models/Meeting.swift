@@ -66,6 +66,8 @@ struct Meeting: Identifiable, Codable, Hashable {
     var manualNotes: String
     var actionItems: [MeetingActionItem]
     var transcript: [TranscriptSegment]
+    var processingMessage: String?
+    var processingProgress: Double?
     var createdAt = Date()
     var updatedAt = Date()
 
@@ -85,6 +87,8 @@ struct Meeting: Identifiable, Codable, Hashable {
         case manualNotes
         case actionItems
         case transcript
+        case processingMessage
+        case processingProgress
         case createdAt
         case updatedAt
     }
@@ -108,7 +112,9 @@ struct Meeting: Identifiable, Codable, Hashable {
             openQuestions: [],
             manualNotes: "",
             actionItems: [],
-            transcript: []
+            transcript: [],
+            processingMessage: nil,
+            processingProgress: nil
         )
     }
 
@@ -127,7 +133,9 @@ struct Meeting: Identifiable, Codable, Hashable {
             openQuestions: [],
             manualNotes: "",
             actionItems: [],
-            transcript: []
+            transcript: [],
+            processingMessage: nil,
+            processingProgress: nil
         )
     }
 
@@ -166,7 +174,9 @@ struct Meeting: Identifiable, Codable, Hashable {
             TranscriptSegment(startTime: 0, endTime: 12, speaker: "Tahir", text: "The main requirement is a Mac app that can record meetings and produce precise notes."),
             TranscriptSegment(startTime: 12, endTime: 28, speaker: "Product", text: "We should separate summary notes, action items, and the full transcript so each can be exported."),
             TranscriptSegment(startTime: 28, endTime: 48, speaker: "Engineering", text: "The right first step is manual capture with a reliable meeting library and polished PDF output.")
-        ]
+        ],
+        processingMessage: nil,
+        processingProgress: nil
     )
 }
 
@@ -188,6 +198,8 @@ extension Meeting {
         manualNotes = try container.decodeIfPresent(String.self, forKey: .manualNotes) ?? ""
         actionItems = try container.decodeIfPresent([MeetingActionItem].self, forKey: .actionItems) ?? []
         transcript = try container.decodeIfPresent([TranscriptSegment].self, forKey: .transcript) ?? []
+        processingMessage = try container.decodeIfPresent(String.self, forKey: .processingMessage)
+        processingProgress = try container.decodeIfPresent(Double.self, forKey: .processingProgress)
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
     }

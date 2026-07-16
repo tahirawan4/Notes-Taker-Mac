@@ -15,8 +15,16 @@ final class RecordingService {
         activeMeeting != nil
     }
 
-    func start(source: MeetingSource, target: CaptureTarget = .mainDisplay()) async -> Meeting {
-        var meeting = Meeting.starter(source: source)
+    func start(meeting existingMeeting: Meeting?, source: MeetingSource, target: CaptureTarget = .mainDisplay()) async -> Meeting {
+        var meeting = existingMeeting ?? Meeting.starter(source: source)
+        meeting.source = source
+        meeting.status = .recording
+        meeting.startedAt = existingMeeting?.startedAt ?? Date()
+        meeting.endedAt = nil
+        meeting.videoPath = nil
+        meeting.audioPath = nil
+        meeting.processingMessage = nil
+        meeting.processingProgress = nil
         lastError = nil
 
         do {
@@ -40,6 +48,10 @@ final class RecordingService {
         }
     }
 
+    func start(source: MeetingSource, target: CaptureTarget = .mainDisplay()) async -> Meeting {
+        await start(meeting: nil, source: source, target: target)
+    }
+
     func stop() async -> Meeting? {
         guard var meeting = activeMeeting else { return nil }
         meeting.endedAt = Date()
@@ -48,15 +60,8 @@ final class RecordingService {
             let url = try await movieRecorder.stop()
             meeting.videoPath = url.path
             meeting.status = .ready
-            meeting.summary = [
-                "Screen recording was saved successfully.",
-                "Transcript and AI notes are not generated yet. Connect a transcription provider next to process the recording into notes and action items."
-            ]
-            meeting.decisions = []
-            meeting.actionItems = [
-                MeetingActionItem(owner: "You", task: "Transcribe this saved recording and generate meeting notes.", dueDate: nil, priority: .high, status: .open, evidenceTimestamp: nil)
-            ]
-            meeting.transcript = []
+            meeting.processingMessage = "Recording saved. Starting transcription..."
+            meeting.processingProgress = 0.02
             lastError = nil
         } catch {
             meeting.status = .failed

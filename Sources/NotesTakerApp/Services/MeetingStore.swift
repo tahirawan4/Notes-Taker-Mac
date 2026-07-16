@@ -69,6 +69,22 @@ final class MeetingStore {
         save()
     }
 
+    func replace(_ meeting: Meeting, select: Bool) {
+        var updated = meeting
+        updated.updatedAt = Date()
+
+        if let index = meetings.firstIndex(where: { $0.id == meeting.id }) {
+            meetings[index] = updated
+        } else {
+            meetings.insert(updated, at: 0)
+        }
+
+        if select {
+            selectedMeetingID = updated.id
+        }
+        save()
+    }
+
     func updateMeetingStatus(id: Meeting.ID, status: MeetingStatus, summary: [String]? = nil) {
         guard let index = meetings.firstIndex(where: { $0.id == id }) else {
             return
@@ -81,6 +97,27 @@ final class MeetingStore {
         save()
     }
 
+    func updateProcessing(id: Meeting.ID, message: String, progress: Double, status: MeetingStatus = .processing) {
+        guard let index = meetings.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        meetings[index].status = status
+        meetings[index].processingMessage = message
+        meetings[index].processingProgress = min(max(progress, 0), 1)
+        meetings[index].updatedAt = Date()
+        save()
+    }
+
+    func clearProcessing(id: Meeting.ID) {
+        guard let index = meetings.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        meetings[index].processingMessage = nil
+        meetings[index].processingProgress = nil
+        meetings[index].updatedAt = Date()
+        save()
+    }
+
     func resetProcessing(id: Meeting.ID, message: String) {
         guard let index = meetings.firstIndex(where: { $0.id == id }) else {
             return
@@ -89,6 +126,8 @@ final class MeetingStore {
         if shouldReplaceProcessingSummary(meetings[index].summary) {
             meetings[index].summary = [message]
         }
+        meetings[index].processingMessage = message
+        meetings[index].processingProgress = 0
         meetings[index].updatedAt = Date()
         save()
     }
@@ -128,6 +167,8 @@ final class MeetingStore {
                     "Processing was interrupted because NotesTaker was closed. Press Process Recording to restart."
                 ]
             }
+            meetings[index].processingMessage = "Processing was interrupted because NotesTaker was closed. Press Process Recording to restart."
+            meetings[index].processingProgress = 0
             meetings[index].updatedAt = Date()
         }
     }

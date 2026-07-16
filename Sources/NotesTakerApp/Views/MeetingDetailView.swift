@@ -37,16 +37,28 @@ struct MeetingDetailView: View {
         .preferredColorScheme(.light)
         .onAppear {
             manualNotesDraft = meeting.manualNotes
+            processingMessage = meeting.processingMessage
+            processingProgress = meeting.processingProgress ?? 0
         }
         .onChange(of: meeting.id) { _, _ in
             manualNotesDraft = meeting.manualNotes
             manualNotesSavedMessage = nil
-            processingMessage = nil
-            processingProgress = 0
+            processingMessage = meeting.processingMessage
+            processingProgress = meeting.processingProgress ?? 0
         }
         .onChange(of: meeting.manualNotes) { _, newValue in
             if !isManualNotesDirty {
                 manualNotesDraft = newValue
+            }
+        }
+        .onChange(of: meeting.processingMessage) { _, newValue in
+            if !isProcessing {
+                processingMessage = newValue
+            }
+        }
+        .onChange(of: meeting.processingProgress) { _, newValue in
+            if !isProcessing {
+                processingProgress = newValue ?? 0
             }
         }
     }
@@ -179,7 +191,7 @@ struct MeetingDetailView: View {
 
     @ViewBuilder
     private var processingPanel: some View {
-        if hasSavedRecording && (isProcessing || meeting.status == .processing || processingMessage != nil) {
+        if hasSavedRecording && (isProcessing || meeting.status == .processing || activeProcessingMessage != nil) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline) {
                     Label(processingPanelTitle, systemImage: isProcessing ? "gearshape.2" : "exclamationmark.arrow.triangle.2.circlepath")
@@ -207,7 +219,7 @@ struct MeetingDetailView: View {
                     .progressViewStyle(.linear)
                     .tint(.teal)
 
-                Text(processingMessage ?? "Processing was interrupted. Restart it when you are ready.")
+                Text(activeProcessingMessage ?? "Processing was interrupted. Restart it when you are ready.")
                     .font(.callout)
                     .foregroundStyle(AppColors.textMuted)
             }
@@ -350,7 +362,11 @@ struct MeetingDetailView: View {
     }
 
     private var statusMessage: String? {
-        processingMessage ?? exportMessage ?? copyMessage
+        activeProcessingMessage ?? exportMessage ?? copyMessage
+    }
+
+    private var activeProcessingMessage: String? {
+        processingMessage ?? meeting.processingMessage
     }
 
     private var isManualNotesDirty: Bool {
@@ -378,7 +394,10 @@ struct MeetingDetailView: View {
                 }
                 try Task.checkCancellation()
                 await MainActor.run {
-                    store.upsert(processed)
+                    var final = processed
+                    final.processingMessage = nil
+                    final.processingProgress = nil
+                    store.upsert(final)
                     processingMessage = "Transcript and notes generated"
                     processingProgress = 1.0
                     isProcessing = false
@@ -396,6 +415,8 @@ struct MeetingDetailView: View {
                     var failed = meeting
                     failed.status = .failed
                     failed.summary = ["Processing failed: \(error.localizedDescription)"]
+                    failed.processingMessage = error.localizedDescription
+                    failed.processingProgress = 0
                     store.upsert(failed)
                     processingMessage = error.localizedDescription
                     isProcessing = false
