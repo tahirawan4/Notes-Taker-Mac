@@ -46,6 +46,8 @@ struct AINotesService {
             jsonText = try await callOpenAI(prompt: prompt, settings: settings)
         case .claude:
             jsonText = try await callClaude(prompt: prompt, settings: settings)
+        case .gemini:
+            jsonText = try await callGemini(prompt: prompt, settings: settings)
         }
 
         let result = try parseResult(from: jsonText)
@@ -97,6 +99,35 @@ struct AINotesService {
             "temperature": 0.2,
             "messages": [
                 ["role": "user", "content": prompt]
+            ]
+        ])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        return try extractText(from: data)
+    }
+
+    private func callGemini(prompt: String, settings: AISettingsSnapshot) async throws -> String {
+        let model = settings.geminiModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let encodedModel = (model.isEmpty ? "gemini-2.5-flash" : model)
+            .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "gemini-2.5-flash"
+        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(encodedModel):generateContent")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(settings.geminiKey, forHTTPHeaderField: "x-goog-api-key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "contents": [
+                [
+                    "role": "user",
+                    "parts": [
+                        ["text": prompt]
+                    ]
+                ]
+            ],
+            "generationConfig": [
+                "temperature": 0.2,
+                "responseMimeType": "application/json"
             ]
         ])
 

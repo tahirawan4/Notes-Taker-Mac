@@ -40,6 +40,14 @@ struct AISettingsView: View {
                         modelTitle: "Claude Model",
                         model: $settings.claudeModel
                     )
+                } else if settings.provider == .gemini {
+                    keySection(
+                        title: "Gemini API Key",
+                        placeholder: "AIza...",
+                        key: $settings.geminiKey,
+                        modelTitle: "Gemini Model",
+                        model: $settings.geminiModel
+                    )
                 } else {
                     Text("Local mode uses Apple Speech and built-in note extraction. No AI provider is called.")
                         .foregroundStyle(AppColors.textMuted)
