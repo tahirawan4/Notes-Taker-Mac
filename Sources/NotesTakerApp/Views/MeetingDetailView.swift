@@ -10,12 +10,15 @@ struct MeetingDetailView: View {
     @State private var manualNotesDraft = ""
     @State private var manualNotesSavedMessage: String?
     @State private var isProcessing = false
+    @State private var processingProgress = 0.0
+    @State private var processingTask: Task<Void, Never>?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 header
                 videoPanel
+                processingPanel
                 manualNotesPanel
 
                 TabView {
@@ -38,6 +41,8 @@ struct MeetingDetailView: View {
         .onChange(of: meeting.id) { _, _ in
             manualNotesDraft = meeting.manualNotes
             manualNotesSavedMessage = nil
+            processingMessage = nil
+            processingProgress = 0
         }
         .onChange(of: meeting.manualNotes) { _, newValue in
             if !isManualNotesDirty {
@@ -116,11 +121,20 @@ struct MeetingDetailView: View {
             .buttonStyle(.borderedProminent)
             .tint(.indigo)
 
-            if canProcess {
+            if hasSavedRecording {
+                if isProcessing || meeting.status == .processing {
+                    Button(role: .destructive) {
+                        stopProcessing()
+                    } label: {
+                        Label("Stop Processing", systemImage: "stop.fill")
+                    }
+                    .buttonStyle(.bordered)
+                }
+
                 Button {
                     processRecording()
                 } label: {
-                    Label(isProcessing ? "Processing" : "Process Recording", systemImage: "waveform.badge.magnifyingglass")
+                    Label(processButtonTitle, systemImage: "waveform.badge.magnifyingglass")
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.teal)
@@ -161,6 +175,49 @@ struct MeetingDetailView: View {
         }
         .frame(height: 260)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    @ViewBuilder
+    private var processingPanel: some View {
+        if hasSavedRecording && (isProcessing || meeting.status == .processing || processingMessage != nil) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    Label(processingPanelTitle, systemImage: isProcessing ? "gearshape.2" : "exclamationmark.arrow.triangle.2.circlepath")
+                        .font(.headline)
+                        .foregroundStyle(AppColors.text)
+                    Spacer()
+                    if isProcessing || meeting.status == .processing {
+                        Button(role: .destructive) {
+                            stopProcessing()
+                        } label: {
+                            Label("Stop", systemImage: "stop.fill")
+                        }
+                    }
+                    Button {
+                        processRecording()
+                    } label: {
+                        Label(isProcessing ? "Running" : "Restart", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.teal)
+                    .disabled(isProcessing)
+                }
+
+                ProgressView(value: processingProgress, total: 1.0)
+                    .progressViewStyle(.linear)
+                    .tint(.teal)
+
+                Text(processingMessage ?? "Processing was interrupted. Restart it when you are ready.")
+                    .font(.callout)
+                    .foregroundStyle(AppColors.textMuted)
+            }
+            .padding(18)
+            .background(AppColors.surface, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.black.opacity(0.06), lineWidth: 1)
+            }
+        }
     }
 
     private var manualNotesPanel: some View {
@@ -265,10 +322,31 @@ struct MeetingDetailView: View {
         return "Start Capture will save a local screen recording here. Transcript and AI notes require transcription processing after recording."
     }
 
-    private var canProcess: Bool {
-        meeting.status == .ready &&
-        meeting.videoPath != nil &&
-        !isProcessing
+    private var hasSavedRecording: Bool {
+        guard let videoPath = meeting.videoPath else {
+            return false
+        }
+        return FileManager.default.fileExists(atPath: videoPath)
+    }
+
+    private var processButtonTitle: String {
+        if isProcessing {
+            return "Processing"
+        }
+        if meeting.status == .processing {
+            return "Restart Processing"
+        }
+        return meeting.transcript.isEmpty ? "Process Recording" : "Reprocess Recording"
+    }
+
+    private var processingPanelTitle: String {
+        if isProcessing {
+            return "Processing Recording"
+        }
+        if meeting.status == .processing {
+            return "Processing Interrupted"
+        }
+        return "Processing Status"
     }
 
     private var statusMessage: String? {
@@ -280,17 +358,38 @@ struct MeetingDetailView: View {
     }
 
     private func processRecording() {
+        processingTask?.cancel()
         isProcessing = true
-        processingMessage = "Processing recording..."
-        store.updateMeetingStatus(id: meeting.id, status: .processing, summary: ["Processing recording for transcript and notes..."])
+        processingProgress = 0.05
+        processingMessage = "Preparing recording for processing..."
+        store.updateMeetingStatus(
+            id: meeting.id,
+            status: .processing,
+            summary: meeting.summary.isEmpty ? ["Processing recording for transcript and notes..."] : nil
+        )
 
-        Task {
+        processingTask = Task {
             do {
-                let processed = try await MeetingProcessingService().process(meeting)
+                let processed = try await MeetingProcessingService().process(meeting) { update in
+                    await MainActor.run {
+                        processingMessage = update.message
+                        processingProgress = update.fraction
+                    }
+                }
+                try Task.checkCancellation()
                 await MainActor.run {
                     store.upsert(processed)
                     processingMessage = "Transcript and notes generated"
+                    processingProgress = 1.0
                     isProcessing = false
+                    processingTask = nil
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    isProcessing = false
+                    processingTask = nil
+                    processingProgress = 0
+                    processingMessage = "Processing stopped. Press Restart to run it again."
                 }
             } catch {
                 await MainActor.run {
@@ -300,9 +399,19 @@ struct MeetingDetailView: View {
                     store.upsert(failed)
                     processingMessage = error.localizedDescription
                     isProcessing = false
+                    processingTask = nil
                 }
             }
         }
+    }
+
+    private func stopProcessing() {
+        processingTask?.cancel()
+        processingTask = nil
+        isProcessing = false
+        processingProgress = 0
+        processingMessage = "Processing stopped. Press Restart to run it again."
+        store.resetProcessing(id: meeting.id, message: "Processing was stopped. Press Process Recording to restart.")
     }
 
     private func export(_ kind: PDFExportKind) {

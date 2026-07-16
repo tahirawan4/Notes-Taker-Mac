@@ -37,7 +37,9 @@ final class MeetingStore {
 
         do {
             meetings = try JSONDecoder.meetingDecoder.decode([Meeting].self, from: data)
+            recoverInterruptedProcessing()
             selectedMeetingID = meetings.first?.id
+            save()
         } catch {
             meetings = [.sample]
             selectedMeetingID = meetings.first?.id
@@ -79,6 +81,18 @@ final class MeetingStore {
         save()
     }
 
+    func resetProcessing(id: Meeting.ID, message: String) {
+        guard let index = meetings.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        meetings[index].status = .ready
+        if shouldReplaceProcessingSummary(meetings[index].summary) {
+            meetings[index].summary = [message]
+        }
+        meetings[index].updatedAt = Date()
+        save()
+    }
+
     func updateManualNotes(id: Meeting.ID, notes: String) {
         guard let index = meetings.firstIndex(where: { $0.id == id }) else {
             return
@@ -104,6 +118,25 @@ final class MeetingStore {
             selectedMeetingID = meetings.first?.id
         }
         save()
+    }
+
+    private func recoverInterruptedProcessing() {
+        for index in meetings.indices where meetings[index].status == .processing {
+            meetings[index].status = .ready
+            if shouldReplaceProcessingSummary(meetings[index].summary) {
+                meetings[index].summary = [
+                    "Processing was interrupted because NotesTaker was closed. Press Process Recording to restart."
+                ]
+            }
+            meetings[index].updatedAt = Date()
+        }
+    }
+
+    private func shouldReplaceProcessingSummary(_ summary: [String]) -> Bool {
+        guard let first = summary.first?.lowercased() else {
+            return true
+        }
+        return summary.isEmpty || first.contains("processing")
     }
 }
 

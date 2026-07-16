@@ -29,7 +29,14 @@ enum MeetingProcessingError: LocalizedError {
 }
 
 struct MeetingProcessingService {
-    func process(_ meeting: Meeting) async throws -> Meeting {
+    struct ProgressUpdate: Sendable {
+        var message: String
+        var fraction: Double
+    }
+
+    typealias ProgressHandler = @Sendable (ProgressUpdate) async -> Void
+
+    func process(_ meeting: Meeting, progress: ProgressHandler? = nil) async throws -> Meeting {
         guard let videoPath = meeting.videoPath else {
             throw MeetingProcessingError.missingRecording
         }
@@ -39,17 +46,25 @@ struct MeetingProcessingService {
             throw MeetingProcessingError.missingRecording
         }
 
+        try Task.checkCancellation()
+        await report("Extracting audio from recording...", 0.15, progress)
         let audioURL = try await extractAudio(from: videoURL, meetingID: meeting.id)
+        try Task.checkCancellation()
+        await report("Transcribing speech with Apple Speech...", 0.45, progress)
         let transcriptText = try await transcribe(audioURL: audioURL)
         let cleaned = transcriptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else {
             throw MeetingProcessingError.emptyTranscript
         }
 
+        try Task.checkCancellation()
+        await report("Building transcript sections...", 0.72, progress)
         var processed = meeting
         processed.audioPath = audioURL.path
         processed.status = .ready
         processed.transcript = makeTranscriptSegments(from: cleaned, duration: max(meeting.duration, 1))
+        try Task.checkCancellation()
+        await report("Extracting summary and action items...", 0.82, progress)
         let notes = makeLocalNotes(from: cleaned)
         processed.summary = notes.summary
         processed.decisions = notes.decisions
@@ -64,13 +79,20 @@ struct MeetingProcessingService {
         let settings = AISettingsStore.currentSnapshot()
         if settings.isAIEnabled {
             do {
+                try Task.checkCancellation()
+                await report("Enhancing notes with AI...", 0.90, progress)
                 processed = try await AINotesService().enhance(meeting: processed, transcript: cleaned, settings: settings)
             } catch {
                 processed.openQuestions.append("AI enhancement was skipped: \(error.localizedDescription)")
             }
         }
 
+        await report("Processing complete.", 1.0, progress)
         return processed
+    }
+
+    private func report(_ message: String, _ fraction: Double, _ progress: ProgressHandler?) async {
+        await progress?(ProgressUpdate(message: message, fraction: fraction))
     }
 
     private func extractAudio(from videoURL: URL, meetingID: UUID) async throws -> URL {
