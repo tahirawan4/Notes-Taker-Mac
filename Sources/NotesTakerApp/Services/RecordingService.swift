@@ -9,13 +9,19 @@ final class RecordingService {
     private(set) var lastError: String?
 
     private let movieRecorder = ScreenMovieRecorder()
+    private var lifecycle = RecordingStateMachine()
     private var timer: Timer?
 
     var isRecording: Bool {
-        activeMeeting != nil
+        lifecycle.isActive
     }
 
     func start(meeting existingMeeting: Meeting?, source: MeetingSource, target: CaptureTarget = .mainDisplay()) async -> Meeting {
+        if lifecycle.isActive {
+            lastError = RecordingStateMachineError.alreadyRecording.localizedDescription
+            return activeMeeting ?? existingMeeting ?? Meeting.starter(source: source)
+        }
+
         var meeting = existingMeeting ?? Meeting.starter(source: source)
         meeting.source = source
         meeting.status = .recording
@@ -28,10 +34,12 @@ final class RecordingService {
         lastError = nil
 
         do {
+            try lifecycle.beginStart(meetingID: meeting.id)
             let outputURL = try recordingsDirectory()
                 .appending(path: "\(meeting.id.uuidString).mov")
             try await movieRecorder.start(to: outputURL, target: target)
             activeMeeting = meeting
+            try lifecycle.finishStart(meetingID: meeting.id)
             elapsed = 0
             startTimer()
             return meeting
@@ -42,6 +50,7 @@ final class RecordingService {
             lastError = error.localizedDescription
             activeMeeting = nil
             elapsed = 0
+            lifecycle.failStart(meetingID: meeting.id)
             timer?.invalidate()
             timer = nil
             return meeting
@@ -53,7 +62,18 @@ final class RecordingService {
     }
 
     func stop() async -> Meeting? {
-        guard var meeting = activeMeeting else { return nil }
+        guard var meeting = activeMeeting else {
+            lastError = RecordingStateMachineError.notRecording.localizedDescription
+            return nil
+        }
+
+        do {
+            _ = try lifecycle.beginStop()
+        } catch {
+            lastError = error.localizedDescription
+            return meeting
+        }
+
         meeting.endedAt = Date()
 
         do {
@@ -71,6 +91,7 @@ final class RecordingService {
 
         activeMeeting = nil
         elapsed = 0
+        lifecycle.finishStop(meetingID: meeting.id)
         timer?.invalidate()
         timer = nil
         return meeting
@@ -86,7 +107,7 @@ final class RecordingService {
     }
 
     private func recordingsDirectory() throws -> URL {
-        let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let baseURL = try FileManager.default.applicationSupportURL()
         let url = baseURL
             .appending(path: "NotesTaker", directoryHint: .isDirectory)
             .appending(path: "Recordings", directoryHint: .isDirectory)

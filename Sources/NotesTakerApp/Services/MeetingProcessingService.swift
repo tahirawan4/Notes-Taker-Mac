@@ -379,7 +379,7 @@ struct MeetingProcessingService {
     }
 
     private func processingDirectory() throws -> URL {
-        let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let baseURL = try FileManager.default.applicationSupportURL()
         let url = baseURL
             .appending(path: "NotesTaker", directoryHint: .isDirectory)
             .appending(path: "ProcessedAudio", directoryHint: .isDirectory)

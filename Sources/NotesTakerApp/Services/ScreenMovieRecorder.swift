@@ -11,6 +11,8 @@ enum ScreenMovieRecorderError: LocalizedError {
     case writerSetupFailed(String)
     case startFailed(String)
     case stopFailed(String)
+    case validationFailed(String)
+    case finalizationFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -26,32 +28,60 @@ enum ScreenMovieRecorderError: LocalizedError {
             "The recording could not be started: \(detail)"
         case .stopFailed(let detail):
             "The recording could not be stopped cleanly: \(detail)"
+        case .validationFailed(let detail):
+            "The saved recording could not be verified: \(detail)"
+        case .finalizationFailed(let detail):
+            "The recording could not be moved into place: \(detail)"
         }
     }
 }
 
 @MainActor
 final class ScreenMovieRecorder: NSObject {
+    private enum AudioQuality {
+        case speechBalanced
+        case speechHigh
+
+        var bitRate: Int {
+            switch self {
+            case .speechBalanced:
+                96_000
+            case .speechHigh:
+                128_000
+            }
+        }
+    }
+
     private enum Compression {
         static let maxLongEdge = 960
         static let framesPerSecond: Int32 = 10
         static let minimumVideoBitRate = 220_000
         static let maximumVideoBitRate = 700_000
         static let audioSampleRate = 44_100
-        static let audioBitRate = 96_000
+        static let audioQuality = AudioQuality.speechBalanced
+        static let audioBitRate = audioQuality.bitRate
+    }
+
+    private struct RecordingValidation {
+        var duration: TimeInterval
+        var fileSize: Int64
+        var videoTrackCount: Int
+        var audioTrackCount: Int
     }
 
     private let sampleQueue = DispatchQueue(label: "com.tahirawan.notestaker.capture")
     private let writerState = WriterState()
     private var stream: SCStream?
     private var outputURL: URL?
+    private var finalOutputURL: URL?
 
     var isRecording: Bool {
         stream != nil
     }
 
     func start(to url: URL, target: CaptureTarget = .mainDisplay()) async throws {
-        NSLog("[NotesTaker] Recording start requested → %@", url.path)
+        let temporaryURL = temporaryRecordingURL(for: url)
+        NSLog("[NotesTaker] Recording start requested -> %@", url.lastPathComponent)
 
         let preflight = CGPreflightScreenCaptureAccess()
         NSLog(
@@ -75,7 +105,7 @@ final class ScreenMovieRecorder: NSObject {
             // Calling CGRequestScreenCaptureAccess repeatedly causes the modal loop the user saw.
             if preflight {
                 throw ScreenMovieRecorderError.startFailed(
-                    "macOS still blocked capture even though Screen Recording looks enabled. Remove NotesTaker with −, add this exact app with +, then quit and reopen NotesTaker: \(Bundle.main.bundleURL.path)"
+                    "macOS still blocked capture even though Screen Recording looks enabled. Remove NotesTaker with -, add this exact app with +, then quit and reopen NotesTaker."
                 )
             }
             throw ScreenMovieRecorderError.screenPermissionDenied
@@ -96,11 +126,13 @@ final class ScreenMovieRecorder: NSObject {
             scale
         )
 
-        try? FileManager.default.removeItem(at: url)
+        if FileManager.default.fileExists(atPath: temporaryURL.path) {
+            try FileManager.default.removeItem(at: temporaryURL)
+        }
 
         let writer: AVAssetWriter
         do {
-            writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+            writer = try AVAssetWriter(outputURL: temporaryURL, fileType: .mov)
         } catch {
             throw ScreenMovieRecorderError.writerSetupFailed(error.localizedDescription)
         }
@@ -130,6 +162,11 @@ final class ScreenMovieRecorder: NSObject {
             AVNumberOfChannelsKey: 1,
             AVEncoderBitRateKey: Compression.audioBitRate
         ]
+        NSLog(
+            "[NotesTaker] Audio encoding configured: %d Hz, %d bps mono AAC",
+            Compression.audioSampleRate,
+            Compression.audioBitRate
+        )
         let micInput = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
         micInput.expectsMediaDataInRealTime = true
         if writer.canAdd(micInput) {
@@ -172,7 +209,8 @@ final class ScreenMovieRecorder: NSObject {
         }
 
         self.stream = stream
-        self.outputURL = url
+        self.outputURL = temporaryURL
+        self.finalOutputURL = url
 
         do {
             try await stream.startCapture()
@@ -270,7 +308,7 @@ final class ScreenMovieRecorder: NSObject {
     }
 
     func stop() async throws -> URL {
-        guard let stream, let outputURL else {
+        guard let stream, let outputURL, let finalOutputURL else {
             throw ScreenMovieRecorderError.stopFailed("No active recording.")
         }
 
@@ -291,13 +329,23 @@ final class ScreenMovieRecorder: NSObject {
         }
 
         self.outputURL = nil
+        self.finalOutputURL = nil
 
         if let finishError {
             throw ScreenMovieRecorderError.stopFailed(finishError.localizedDescription)
         }
 
-        NSLog("[NotesTaker] Recording saved → %@", outputURL.path)
-        return outputURL
+        let validation = try await validateRecording(at: outputURL)
+        let savedURL = try finalizeRecording(from: outputURL, to: finalOutputURL)
+        NSLog(
+            "[NotesTaker] Recording saved -> %@ (%.2fs, %lld bytes, video tracks=%d, audio tracks=%d)",
+            savedURL.lastPathComponent,
+            validation.duration,
+            validation.fileSize,
+            validation.videoTrackCount,
+            validation.audioTrackCount
+        )
+        return savedURL
     }
 
     private func teardownAfterFailure() async {
@@ -315,6 +363,57 @@ final class ScreenMovieRecorder: NSObject {
             try? FileManager.default.removeItem(at: outputURL)
         }
         self.outputURL = nil
+        self.finalOutputURL = nil
+    }
+
+    private func temporaryRecordingURL(for finalURL: URL) -> URL {
+        let filename = ".\(finalURL.deletingPathExtension().lastPathComponent)-\(UUID().uuidString).tmp.mov"
+        return finalURL.deletingLastPathComponent().appending(path: filename)
+    }
+
+    private func validateRecording(at url: URL) async throws -> RecordingValidation {
+        let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
+        let fileSize = Int64(resourceValues.fileSize ?? 0)
+        guard fileSize > 0 else {
+            throw ScreenMovieRecorderError.validationFailed("The movie file is empty.")
+        }
+
+        let asset = AVURLAsset(url: url)
+        let isReadable = try await asset.load(.isReadable)
+        guard isReadable else {
+            throw ScreenMovieRecorderError.validationFailed("The movie file is not readable.")
+        }
+
+        let duration = CMTimeGetSeconds(try await asset.load(.duration))
+        guard duration.isFinite, duration > 0 else {
+            throw ScreenMovieRecorderError.validationFailed("The movie has no duration.")
+        }
+
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        guard !videoTracks.isEmpty else {
+            throw ScreenMovieRecorderError.validationFailed("The movie has no video track.")
+        }
+
+        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        return RecordingValidation(
+            duration: duration,
+            fileSize: fileSize,
+            videoTrackCount: videoTracks.count,
+            audioTrackCount: audioTracks.count
+        )
+    }
+
+    private func finalizeRecording(from temporaryURL: URL, to finalURL: URL) throws -> URL {
+        do {
+            if FileManager.default.fileExists(atPath: finalURL.path) {
+                try FileManager.default.removeItem(at: finalURL)
+            }
+            try FileManager.default.moveItem(at: temporaryURL, to: finalURL)
+            return finalURL
+        } catch {
+            try? FileManager.default.removeItem(at: temporaryURL)
+            throw ScreenMovieRecorderError.finalizationFailed(error.localizedDescription)
+        }
     }
 
 }

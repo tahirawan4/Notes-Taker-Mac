@@ -19,7 +19,7 @@ final class MeetingStore {
         if let fileURL {
             self.fileURL = fileURL
         } else {
-            let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            let baseURL = (try? FileManager.default.applicationSupportURL()) ?? FileManager.default.homeDirectoryForCurrentUser
             let appURL = baseURL.appending(path: "NotesTaker", directoryHint: .isDirectory)
             try? FileManager.default.createDirectory(at: appURL, withIntermediateDirectories: true)
             self.fileURL = appURL.appending(path: "meetings.json")
@@ -221,6 +221,15 @@ final class MeetingStore {
         let backupURL = fileURL.deletingLastPathComponent()
             .appending(path: "meetings-corrupt-\(formatter.string(from: Date())).json")
         try? FileManager.default.copyItem(at: fileURL, to: backupURL)
+    }
+}
+
+extension FileManager {
+    func applicationSupportURL() throws -> URL {
+        guard let url = urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        return url
     }
 }
 

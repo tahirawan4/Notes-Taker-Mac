@@ -48,7 +48,8 @@ struct CaptureSourceProvider {
             }
             .map { window in
                 let appName = window.owningApplication?.applicationName ?? "Unknown App"
-                let title = window.title?.isEmpty == false ? window.title! : appName
+                let windowTitle = window.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let title = windowTitle.isEmpty ? appName : windowTitle
                 return CaptureTarget(
                     id: "window-\(window.windowID)",
                     kind: .window,

@@ -57,8 +57,9 @@ struct AINotesService {
         enhanced.risks = result.risks
         enhanced.openQuestions = result.openQuestions
         enhanced.actionItems = result.actionItems.map {
-            MeetingActionItem(
-                owner: ($0.owner?.isEmpty == false ? $0.owner! : "Unassigned"),
+            let owner = $0.owner?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return MeetingActionItem(
+                owner: owner.isEmpty ? "Unassigned" : owner,
                 task: $0.task,
                 dueDate: nil,
                 priority: priority(from: $0.priority),
@@ -70,7 +71,9 @@ struct AINotesService {
     }
 
     private func callOpenAI(prompt: String, settings: AISettingsSnapshot) async throws -> String {
-        let url = URL(string: "https://api.openai.com/v1/responses")!
+        guard let url = URL(string: "https://api.openai.com/v1/responses") else {
+            throw AINotesError.badResponse
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(settings.openAIKey)", forHTTPHeaderField: "Authorization")
@@ -95,7 +98,9 @@ struct AINotesService {
     }
 
     private func callClaude(prompt: String, settings: AISettingsSnapshot) async throws -> String {
-        let url = URL(string: "https://api.anthropic.com/v1/messages")!
+        guard let url = URL(string: "https://api.anthropic.com/v1/messages") else {
+            throw AINotesError.badResponse
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue(settings.claudeKey, forHTTPHeaderField: "x-api-key")
@@ -130,7 +135,9 @@ struct AINotesService {
         let model = settings.geminiModel.trimmingCharacters(in: .whitespacesAndNewlines)
         let encodedModel = (model.isEmpty ? "gemini-3.5-flash" : model)
             .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "gemini-3.5-flash"
-        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(encodedModel):generateContent")!
+        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(encodedModel):generateContent") else {
+            throw AINotesError.badResponse
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue(settings.geminiKey, forHTTPHeaderField: "x-goog-api-key")
