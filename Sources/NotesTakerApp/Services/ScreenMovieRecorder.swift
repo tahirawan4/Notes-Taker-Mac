@@ -32,6 +32,14 @@ enum ScreenMovieRecorderError: LocalizedError {
 
 @MainActor
 final class ScreenMovieRecorder: NSObject {
+    private enum Compression {
+        static let maxLongEdge = 960
+        static let framesPerSecond: Int32 = 10
+        static let minimumVideoBitRate = 220_000
+        static let maximumVideoBitRate = 700_000
+        static let audioBitRate = 32_000
+    }
+
     private let sampleQueue = DispatchQueue(label: "com.tahirawan.notestaker.capture")
     private let writerState = WriterState()
     private var stream: SCStream?
@@ -74,9 +82,18 @@ final class ScreenMovieRecorder: NSObject {
 
         let scale = max(Int(NSScreen.main?.backingScaleFactor ?? 2), 1)
         let source = try captureSource(from: content, target: target, scale: scale)
-        let width = source.width
-        let height = source.height
-        NSLog("[NotesTaker] Capturing %@ at %dx%d (scale %d)", source.label, width, height, scale)
+        let dimensions = compressedDimensions(width: source.width, height: source.height)
+        let width = dimensions.width
+        let height = dimensions.height
+        NSLog(
+            "[NotesTaker] Capturing %@ at %dx%d from %dx%d (scale %d)",
+            source.label,
+            width,
+            height,
+            source.width,
+            source.height,
+            scale
+        )
 
         try? FileManager.default.removeItem(at: url)
 
@@ -87,17 +104,7 @@ final class ScreenMovieRecorder: NSObject {
             throw ScreenMovieRecorderError.writerSetupFailed(error.localizedDescription)
         }
 
-        let videoSettings: [String: Any] = [
-            AVVideoCodecKey: AVVideoCodecType.h264,
-            AVVideoWidthKey: width,
-            AVVideoHeightKey: height,
-            AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: max(width * height * 3, 2_000_000),
-                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
-            ]
-        ]
-
-        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+        let videoInput = makeVideoInput(width: width, height: height, writer: writer)
         videoInput.expectsMediaDataInRealTime = true
 
         let pixelAttributes: [String: Any] = [
@@ -118,9 +125,9 @@ final class ScreenMovieRecorder: NSObject {
         var audioInput: AVAssetWriterInput?
         let audioSettings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 48_000,
+            AVSampleRateKey: 32_000,
             AVNumberOfChannelsKey: 1,
-            AVEncoderBitRateKey: 128_000
+            AVEncoderBitRateKey: Compression.audioBitRate
         ]
         let micInput = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
         micInput.expectsMediaDataInRealTime = true
@@ -137,8 +144,8 @@ final class ScreenMovieRecorder: NSObject {
         let configuration = SCStreamConfiguration()
         configuration.width = width
         configuration.height = height
-        configuration.minimumFrameInterval = CMTime(value: 1, timescale: 30)
-        configuration.queueDepth = 5
+        configuration.minimumFrameInterval = CMTime(value: 1, timescale: Compression.framesPerSecond)
+        configuration.queueDepth = 3
         configuration.showsCursor = true
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
         if #available(macOS 15.0, *) {
@@ -200,6 +207,64 @@ final class ScreenMovieRecorder: NSObject {
                 "window \(windowID)"
             )
         }
+    }
+
+    private func compressedDimensions(width: Int, height: Int) -> (width: Int, height: Int) {
+        let longEdge = max(width, height)
+        guard longEdge > Compression.maxLongEdge else {
+            return (makeEven(width), makeEven(height))
+        }
+
+        let scale = Double(Compression.maxLongEdge) / Double(longEdge)
+        return (
+            makeEven(max(Int(Double(width) * scale), 2)),
+            makeEven(max(Int(Double(height) * scale), 2))
+        )
+    }
+
+    private func makeEven(_ value: Int) -> Int {
+        max(value - (value % 2), 2)
+    }
+
+    private func makeVideoInput(width: Int, height: Int, writer: AVAssetWriter) -> AVAssetWriterInput {
+        let hevcInput = AVAssetWriterInput(
+            mediaType: .video,
+            outputSettings: videoSettings(codec: .hevc, width: width, height: height)
+        )
+        if writer.canAdd(hevcInput) {
+            NSLog("[NotesTaker] Using HEVC low-bitrate video encoding")
+            return hevcInput
+        }
+
+        NSLog("[NotesTaker] HEVC unavailable; using H.264 low-bitrate video encoding")
+        return AVAssetWriterInput(
+            mediaType: .video,
+            outputSettings: videoSettings(codec: .h264, width: width, height: height)
+        )
+    }
+
+    private func videoSettings(codec: AVVideoCodecType, width: Int, height: Int) -> [String: Any] {
+        var compressionProperties: [String: Any] = [
+            AVVideoAverageBitRateKey: videoBitRate(width: width, height: height),
+            AVVideoExpectedSourceFrameRateKey: Compression.framesPerSecond,
+            AVVideoMaxKeyFrameIntervalKey: Int(Compression.framesPerSecond * 4),
+            AVVideoAllowFrameReorderingKey: false
+        ]
+        if codec == .h264 {
+            compressionProperties[AVVideoProfileLevelKey] = AVVideoProfileLevelH264BaselineAutoLevel
+        }
+
+        return [
+            AVVideoCodecKey: codec,
+            AVVideoWidthKey: width,
+            AVVideoHeightKey: height,
+            AVVideoCompressionPropertiesKey: compressionProperties
+        ]
+    }
+
+    private func videoBitRate(width: Int, height: Int) -> Int {
+        let scaledBitRate = width * height / 2
+        return min(max(scaledBitRate, Compression.minimumVideoBitRate), Compression.maximumVideoBitRate)
     }
 
     func stop() async throws -> URL {
