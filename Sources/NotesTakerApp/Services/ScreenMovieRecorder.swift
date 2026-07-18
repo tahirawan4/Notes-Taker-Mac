@@ -37,7 +37,8 @@ final class ScreenMovieRecorder: NSObject {
         static let framesPerSecond: Int32 = 10
         static let minimumVideoBitRate = 220_000
         static let maximumVideoBitRate = 700_000
-        static let audioBitRate = 32_000
+        static let audioSampleRate = 44_100
+        static let audioBitRate = 96_000
     }
 
     private let sampleQueue = DispatchQueue(label: "com.tahirawan.notestaker.capture")
@@ -125,7 +126,7 @@ final class ScreenMovieRecorder: NSObject {
         var audioInput: AVAssetWriterInput?
         let audioSettings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 32_000,
+            AVSampleRateKey: Compression.audioSampleRate,
             AVNumberOfChannelsKey: 1,
             AVEncoderBitRateKey: Compression.audioBitRate
         ]
