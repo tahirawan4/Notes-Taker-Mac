@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
 import Speech
 
@@ -161,28 +161,42 @@ struct MeetingProcessingService {
         let outputURL = directory.appending(path: "\(meetingID.uuidString)-chunk-\(String(format: "%03d", index)).m4a")
         try? FileManager.default.removeItem(at: outputURL)
 
-        guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
-            throw MeetingProcessingError.audioExportFailed("Audio export session could not be created.")
-        }
-        session.outputURL = outputURL
-        session.outputFileType = .m4a
-        session.shouldOptimizeForNetworkUse = false
-        session.timeRange = CMTimeRange(
-            start: CMTime(seconds: start, preferredTimescale: 600),
-            duration: CMTime(seconds: duration, preferredTimescale: 600)
-        )
+        let cancellation = MediaCancellationState()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                guard !Task.isCancelled else {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
 
-        return try await withCheckedThrowingContinuation { continuation in
-            session.exportAsynchronously {
-                switch session.status {
-                case .completed:
-                    continuation.resume(returning: outputURL)
-                case .failed, .cancelled:
-                    continuation.resume(throwing: MeetingProcessingError.audioExportFailed(session.error?.localizedDescription ?? "Unknown export error."))
-                default:
-                    continuation.resume(throwing: MeetingProcessingError.audioExportFailed("Export ended with status \(session.status.rawValue)."))
+                guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
+                    continuation.resume(throwing: MeetingProcessingError.audioExportFailed("Audio export session could not be created."))
+                    return
+                }
+                cancellation.setExportSession(session)
+                session.outputURL = outputURL
+                session.outputFileType = .m4a
+                session.shouldOptimizeForNetworkUse = false
+                session.timeRange = CMTimeRange(
+                    start: CMTime(seconds: start, preferredTimescale: 600),
+                    duration: CMTime(seconds: duration, preferredTimescale: 600)
+                )
+
+                session.exportAsynchronously {
+                    switch cancellation.exportStatus {
+                    case .completed:
+                        continuation.resume(returning: outputURL)
+                    case .cancelled:
+                        continuation.resume(throwing: CancellationError())
+                    case .failed:
+                        continuation.resume(throwing: MeetingProcessingError.audioExportFailed(cancellation.exportErrorMessage ?? "Unknown export error."))
+                    default:
+                        continuation.resume(throwing: MeetingProcessingError.audioExportFailed("Export ended with status \(cancellation.exportStatus.rawValue)."))
+                    }
                 }
             }
+        } onCancel: {
+            cancellation.cancel()
         }
     }
 
@@ -196,6 +210,7 @@ struct MeetingProcessingService {
 
     private func transcribe(audioURL: URL) async throws -> String {
         let status = await requestSpeechAuthorization()
+        try Task.checkCancellation()
         guard status == .authorized else {
             throw MeetingProcessingError.speechDenied
         }
@@ -208,21 +223,33 @@ struct MeetingProcessingService {
         request.shouldReportPartialResults = false
         request.requiresOnDeviceRecognition = false
 
-        return try await withCheckedThrowingContinuation { continuation in
-            var didResume = false
-            recognizer.recognitionTask(with: request) { result, error in
-                if didResume {
+        let cancellation = MediaCancellationState()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                guard !Task.isCancelled else {
+                    continuation.resume(throwing: CancellationError())
                     return
                 }
 
-                if let result, result.isFinal {
-                    didResume = true
-                    continuation.resume(returning: result.bestTranscription.formattedString)
-                } else if let error {
-                    didResume = true
-                    continuation.resume(throwing: MeetingProcessingError.transcriptionFailed(error.localizedDescription))
+                let task = recognizer.recognitionTask(with: request) { result, error in
+                    if let result, result.isFinal {
+                        cancellation.resumeOnce {
+                            continuation.resume(returning: result.bestTranscription.formattedString)
+                        }
+                    } else if let error {
+                        cancellation.resumeOnce {
+                            if cancellation.isCancelled {
+                                continuation.resume(throwing: CancellationError())
+                            } else {
+                                continuation.resume(throwing: MeetingProcessingError.transcriptionFailed(error.localizedDescription))
+                            }
+                        }
+                    }
                 }
+                cancellation.setSpeechTask(task)
             }
+        } onCancel: {
+            cancellation.cancel()
         }
     }
 
@@ -378,4 +405,65 @@ private struct LocalNotes {
 private struct ChunkedTranscriptionResult {
     var audioDirectory: URL
     var transcript: String
+}
+
+private final class MediaCancellationState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var exportSession: AVAssetExportSession?
+    private var speechTask: SFSpeechRecognitionTask?
+    private var didResume = false
+    private(set) var isCancelled = false
+
+    var exportStatus: AVAssetExportSession.Status {
+        lock.lock()
+        defer { lock.unlock() }
+        return exportSession?.status ?? .unknown
+    }
+
+    var exportErrorMessage: String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return exportSession?.error?.localizedDescription
+    }
+
+    func setExportSession(_ session: AVAssetExportSession) {
+        lock.lock()
+        exportSession = session
+        let shouldCancel = isCancelled
+        lock.unlock()
+        if shouldCancel {
+            session.cancelExport()
+        }
+    }
+
+    func setSpeechTask(_ task: SFSpeechRecognitionTask) {
+        lock.lock()
+        speechTask = task
+        let shouldCancel = isCancelled
+        lock.unlock()
+        if shouldCancel {
+            task.cancel()
+        }
+    }
+
+    func cancel() {
+        lock.lock()
+        isCancelled = true
+        let session = exportSession
+        let task = speechTask
+        lock.unlock()
+        session?.cancelExport()
+        task?.cancel()
+    }
+
+    func resumeOnce(_ action: () -> Void) {
+        lock.lock()
+        guard !didResume else {
+            lock.unlock()
+            return
+        }
+        didResume = true
+        lock.unlock()
+        action()
+    }
 }

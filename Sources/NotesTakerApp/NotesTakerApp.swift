@@ -5,6 +5,7 @@ struct NotesTakerApp: App {
     @State private var store = MeetingStore()
     @State private var recorder = RecordingService()
     @State private var aiSettings = AISettingsStore()
+    @State private var processingCoordinator = ProcessingCoordinator()
 
     var body: some Scene {
         WindowGroup {
@@ -12,6 +13,7 @@ struct NotesTakerApp: App {
                 .environment(store)
                 .environment(recorder)
                 .environment(aiSettings)
+                .environment(processingCoordinator)
                 .frame(minWidth: 1120, minHeight: 720)
         }
         .windowStyle(.hiddenTitleBar)
@@ -21,6 +23,7 @@ struct NotesTakerApp: App {
                 .environment(store)
                 .environment(recorder)
                 .environment(aiSettings)
+                .environment(processingCoordinator)
         }
     }
 }

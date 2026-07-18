@@ -1,5 +1,5 @@
 import AppKit
-import AVFoundation
+@preconcurrency import AVFoundation
 import CoreMedia
 import Foundation
 import ScreenCaptureKit
@@ -163,8 +163,9 @@ final class ScreenMovieRecorder: NSObject {
         }
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            sampleQueue.async { [writerState] in
-                writerState.reset(writer: writer, videoInput: videoInput, audioInput: audioInput, adaptor: adaptor)
+            let resources = WriterResources(writer: writer, videoInput: videoInput, audioInput: audioInput, adaptor: adaptor)
+            sampleQueue.async { [writerState, resources] in
+                writerState.reset(resources: resources)
                 continuation.resume()
             }
         }
@@ -364,16 +365,11 @@ private final class WriterState: @unchecked Sendable {
     private var sessionStarted = false
     private var didLogFirstFrame = false
 
-    func reset(
-        writer: AVAssetWriter,
-        videoInput: AVAssetWriterInput,
-        audioInput: AVAssetWriterInput?,
-        adaptor: AVAssetWriterInputPixelBufferAdaptor
-    ) {
-        self.writer = writer
-        self.videoInput = videoInput
-        self.audioInput = audioInput
-        self.adaptor = adaptor
+    func reset(resources: WriterResources) {
+        self.writer = resources.writer
+        self.videoInput = resources.videoInput
+        self.audioInput = resources.audioInput
+        self.adaptor = resources.adaptor
         self.sessionStarted = false
         self.didLogFirstFrame = false
     }
@@ -407,11 +403,11 @@ private final class WriterState: @unchecked Sendable {
             completion(ScreenMovieRecorderError.stopFailed("Writer missing."))
             return
         }
-        let capturedWriter = writer
+        let writerBox = WriterBox(writer)
         videoInput?.markAsFinished()
         audioInput?.markAsFinished()
-        capturedWriter.finishWriting {
-            let error: Error? = capturedWriter.status == .completed ? nil : capturedWriter.error
+        writerBox.finishWriting {
+            let error: Error? = writerBox.finishError
             completion(error)
         }
         self.writer = nil
@@ -428,5 +424,40 @@ private final class WriterState: @unchecked Sendable {
         audioInput = nil
         adaptor = nil
         sessionStarted = false
+    }
+}
+
+private final class WriterResources: @unchecked Sendable {
+    let writer: AVAssetWriter
+    let videoInput: AVAssetWriterInput
+    let audioInput: AVAssetWriterInput?
+    let adaptor: AVAssetWriterInputPixelBufferAdaptor
+
+    init(
+        writer: AVAssetWriter,
+        videoInput: AVAssetWriterInput,
+        audioInput: AVAssetWriterInput?,
+        adaptor: AVAssetWriterInputPixelBufferAdaptor
+    ) {
+        self.writer = writer
+        self.videoInput = videoInput
+        self.audioInput = audioInput
+        self.adaptor = adaptor
+    }
+}
+
+private final class WriterBox: @unchecked Sendable {
+    private let writer: AVAssetWriter
+
+    init(_ writer: AVAssetWriter) {
+        self.writer = writer
+    }
+
+    var finishError: Error? {
+        writer.status == .completed ? nil : writer.error
+    }
+
+    func finishWriting(completion: @escaping @Sendable () -> Void) {
+        writer.finishWriting(completionHandler: completion)
     }
 }

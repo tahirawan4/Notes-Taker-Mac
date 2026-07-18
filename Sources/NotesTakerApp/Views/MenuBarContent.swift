@@ -3,6 +3,7 @@ import SwiftUI
 struct MenuBarContent: View {
     @Environment(MeetingStore.self) private var store
     @Environment(RecordingService.self) private var recorder
+    @Environment(ProcessingCoordinator.self) private var processor
 
     var body: some View {
         VStack {
@@ -12,6 +13,7 @@ struct MenuBarContent: View {
                     Task {
                         if let meeting = await recorder.stop() {
                             store.upsert(meeting)
+                            processor.process(meeting, store: store)
                         }
                     }
                 }

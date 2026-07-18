@@ -4,10 +4,10 @@ struct RecordingToolbar: View {
     @Environment(MeetingStore.self) private var store
     @Environment(RecordingService.self) private var recorder
     @Environment(AISettingsStore.self) private var aiSettings
+    @Environment(ProcessingCoordinator.self) private var processor
     @State private var source: MeetingSource = .zoom
     @State private var isShowingAISettings = false
     @State private var isShowingCapturePicker = false
-    @State private var processingTasks: [Meeting.ID: Task<Void, Never>] = [:]
 
     var body: some View {
         HStack(spacing: 14) {
@@ -86,7 +86,7 @@ struct RecordingToolbar: View {
             if recorder.isRecording {
                 if let meeting = await recorder.stop() {
                     store.upsert(meeting)
-                    processMeetingInBackground(meeting)
+                    processor.process(meeting, store: store)
                 }
             } else {
                 isShowingCapturePicker = true
@@ -98,44 +98,6 @@ struct RecordingToolbar: View {
         Task {
             let meeting = await recorder.start(meeting: store.selectedMeeting, source: source, target: target)
             store.upsert(meeting)
-        }
-    }
-
-    private func processMeetingInBackground(_ meeting: Meeting) {
-        processingTasks[meeting.id]?.cancel()
-        store.updateProcessing(id: meeting.id, message: "Preparing recording for processing...", progress: 0.05)
-
-        processingTasks[meeting.id] = Task {
-            do {
-                let processed = try await MeetingProcessingService().process(meeting) { update in
-                    await MainActor.run {
-                        store.updateProcessing(id: meeting.id, message: update.message, progress: update.fraction)
-                    }
-                }
-                try Task.checkCancellation()
-                await MainActor.run {
-                    var final = processed
-                    final.processingMessage = nil
-                    final.processingProgress = nil
-                    store.replace(final, select: false)
-                    processingTasks[meeting.id] = nil
-                }
-            } catch is CancellationError {
-                await MainActor.run {
-                    store.resetProcessing(id: meeting.id, message: "Processing was stopped. Press Process Recording to restart.")
-                    processingTasks[meeting.id] = nil
-                }
-            } catch {
-                await MainActor.run {
-                    var failed = meeting
-                    failed.status = .failed
-                    failed.summary = ["Processing failed: \(error.localizedDescription)"]
-                    failed.processingMessage = error.localizedDescription
-                    failed.processingProgress = 0
-                    store.replace(failed, select: false)
-                    processingTasks[meeting.id] = nil
-                }
-            }
         }
     }
 

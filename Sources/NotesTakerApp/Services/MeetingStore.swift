@@ -5,15 +5,27 @@ import Observation
 @Observable
 final class MeetingStore {
     var meetings: [Meeting] = []
-    var selectedMeetingID: Meeting.ID?
+    var selectedMeetingID: Meeting.ID? {
+        didSet {
+            saveSelectedMeetingID()
+        }
+    }
 
     private let fileURL: URL
+    private let seedSampleOnMissing: Bool
+    private let selectedMeetingDefaultsKey: String
 
-    init() {
-        let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let appURL = baseURL.appending(path: "NotesTaker", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: appURL, withIntermediateDirectories: true)
-        fileURL = appURL.appending(path: "meetings.json")
+    init(fileURL: URL? = nil, seedSampleOnMissing: Bool = true) {
+        if let fileURL {
+            self.fileURL = fileURL
+        } else {
+            let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            let appURL = baseURL.appending(path: "NotesTaker", directoryHint: .isDirectory)
+            try? FileManager.default.createDirectory(at: appURL, withIntermediateDirectories: true)
+            self.fileURL = appURL.appending(path: "meetings.json")
+        }
+        self.seedSampleOnMissing = seedSampleOnMissing
+        selectedMeetingDefaultsKey = "selectedMeetingID.\(self.fileURL.path)"
         load()
     }
 
@@ -29,7 +41,7 @@ final class MeetingStore {
 
     func load() {
         guard let data = try? Data(contentsOf: fileURL) else {
-            meetings = [.sample]
+            meetings = seedSampleOnMissing ? [.sample] : []
             selectedMeetingID = meetings.first?.id
             save()
             return
@@ -38,11 +50,13 @@ final class MeetingStore {
         do {
             meetings = try JSONDecoder.meetingDecoder.decode([Meeting].self, from: data)
             recoverInterruptedProcessing()
-            selectedMeetingID = meetings.first?.id
+            selectedMeetingID = restoredSelectedMeetingID() ?? meetings.first?.id
             save()
         } catch {
-            meetings = [.sample]
+            backupCorruptStore()
+            meetings = seedSampleOnMissing ? [.sample] : []
             selectedMeetingID = meetings.first?.id
+            save()
         }
     }
 
@@ -178,6 +192,35 @@ final class MeetingStore {
             return true
         }
         return summary.isEmpty || first.contains("processing")
+    }
+
+    private func restoredSelectedMeetingID() -> Meeting.ID? {
+        guard
+            let rawValue = UserDefaults.standard.string(forKey: selectedMeetingDefaultsKey),
+            let id = Meeting.ID(uuidString: rawValue),
+            meetings.contains(where: { $0.id == id })
+        else {
+            return nil
+        }
+        return id
+    }
+
+    private func saveSelectedMeetingID() {
+        if let selectedMeetingID {
+            UserDefaults.standard.set(selectedMeetingID.uuidString, forKey: selectedMeetingDefaultsKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: selectedMeetingDefaultsKey)
+        }
+    }
+
+    private func backupCorruptStore() {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            return
+        }
+        let formatter = ISO8601DateFormatter()
+        let backupURL = fileURL.deletingLastPathComponent()
+            .appending(path: "meetings-corrupt-\(formatter.string(from: Date())).json")
+        try? FileManager.default.copyItem(at: fileURL, to: backupURL)
     }
 }
 

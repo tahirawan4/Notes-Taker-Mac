@@ -53,7 +53,7 @@ final class AISettingsStore {
         let defaults = UserDefaults.standard
         provider = AIProvider(rawValue: defaults.string(forKey: Self.providerKey) ?? "") ?? .local
         openAIModel = defaults.string(forKey: Self.openAIModelKey) ?? "gpt-4.1-mini"
-        claudeModel = defaults.string(forKey: Self.claudeModelKey) ?? "claude-sonnet-4-5"
+        claudeModel = defaults.string(forKey: Self.claudeModelKey) ?? "claude-sonnet-4-20250514"
         geminiModel = Self.currentGeminiModel(from: defaults.string(forKey: Self.geminiModelKey))
         openAIKey = KeychainStore.read(service: Self.keychainService, account: "openai")
         claudeKey = KeychainStore.read(service: Self.keychainService, account: "claude")

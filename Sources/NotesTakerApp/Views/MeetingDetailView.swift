@@ -3,15 +3,12 @@ import SwiftUI
 
 struct MeetingDetailView: View {
     @Environment(MeetingStore.self) private var store
+    @Environment(ProcessingCoordinator.self) private var processor
     let meeting: Meeting
     @State private var exportMessage: String?
-    @State private var processingMessage: String?
     @State private var copyMessage: String?
     @State private var manualNotesDraft = ""
     @State private var manualNotesSavedMessage: String?
-    @State private var isProcessing = false
-    @State private var processingProgress = 0.0
-    @State private var processingTask: Task<Void, Never>?
 
     var body: some View {
         ScrollView {
@@ -37,28 +34,14 @@ struct MeetingDetailView: View {
         .preferredColorScheme(.light)
         .onAppear {
             manualNotesDraft = meeting.manualNotes
-            processingMessage = meeting.processingMessage
-            processingProgress = meeting.processingProgress ?? 0
         }
         .onChange(of: meeting.id) { _, _ in
             manualNotesDraft = meeting.manualNotes
             manualNotesSavedMessage = nil
-            processingMessage = meeting.processingMessage
-            processingProgress = meeting.processingProgress ?? 0
         }
         .onChange(of: meeting.manualNotes) { _, newValue in
             if !isManualNotesDirty {
                 manualNotesDraft = newValue
-            }
-        }
-        .onChange(of: meeting.processingMessage) { _, newValue in
-            if !isProcessing {
-                processingMessage = newValue
-            }
-        }
-        .onChange(of: meeting.processingProgress) { _, newValue in
-            if !isProcessing {
-                processingProgress = newValue ?? 0
             }
         }
     }
@@ -192,43 +175,14 @@ struct MeetingDetailView: View {
     @ViewBuilder
     private var processingPanel: some View {
         if hasSavedRecording && (isProcessing || meeting.status == .processing || activeProcessingMessage != nil) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline) {
-                    Label(processingPanelTitle, systemImage: isProcessing ? "gearshape.2" : "exclamationmark.arrow.triangle.2.circlepath")
-                        .font(.headline)
-                        .foregroundStyle(AppColors.text)
-                    Spacer()
-                    if isProcessing || meeting.status == .processing {
-                        Button(role: .destructive) {
-                            stopProcessing()
-                        } label: {
-                            Label("Stop", systemImage: "stop.fill")
-                        }
-                    }
-                    Button {
-                        processRecording()
-                    } label: {
-                        Label(isProcessing ? "Running" : "Restart", systemImage: "arrow.clockwise")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.teal)
-                    .disabled(isProcessing)
-                }
-
-                ProgressView(value: processingProgress, total: 1.0)
-                    .progressViewStyle(.linear)
-                    .tint(.teal)
-
-                Text(activeProcessingMessage ?? "Processing was interrupted. Restart it when you are ready.")
-                    .font(.callout)
-                    .foregroundStyle(AppColors.textMuted)
-            }
-            .padding(18)
-            .background(AppColors.surface, in: RoundedRectangle(cornerRadius: 8))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.black.opacity(0.06), lineWidth: 1)
-            }
+            MeetingProcessingPanel(
+                title: processingPanelTitle,
+                message: activeProcessingMessage ?? "Processing was interrupted. Restart it when you are ready.",
+                progress: processingProgress,
+                isProcessing: isProcessing || meeting.status == .processing,
+                onStop: stopProcessing,
+                onRestart: processRecording
+            )
         }
     }
 
@@ -366,7 +320,15 @@ struct MeetingDetailView: View {
     }
 
     private var activeProcessingMessage: String? {
-        processingMessage ?? meeting.processingMessage
+        meeting.processingMessage
+    }
+
+    private var isProcessing: Bool {
+        processor.isProcessing(meeting.id)
+    }
+
+    private var processingProgress: Double {
+        meeting.processingProgress ?? 0
     }
 
     private var isManualNotesDirty: Bool {
@@ -374,65 +336,11 @@ struct MeetingDetailView: View {
     }
 
     private func processRecording() {
-        processingTask?.cancel()
-        isProcessing = true
-        processingProgress = 0.05
-        processingMessage = "Preparing recording for processing..."
-        store.updateMeetingStatus(
-            id: meeting.id,
-            status: .processing,
-            summary: meeting.summary.isEmpty ? ["Processing recording for transcript and notes..."] : nil
-        )
-
-        processingTask = Task {
-            do {
-                let processed = try await MeetingProcessingService().process(meeting) { update in
-                    await MainActor.run {
-                        processingMessage = update.message
-                        processingProgress = update.fraction
-                    }
-                }
-                try Task.checkCancellation()
-                await MainActor.run {
-                    var final = processed
-                    final.processingMessage = nil
-                    final.processingProgress = nil
-                    store.upsert(final)
-                    processingMessage = "Transcript and notes generated"
-                    processingProgress = 1.0
-                    isProcessing = false
-                    processingTask = nil
-                }
-            } catch is CancellationError {
-                await MainActor.run {
-                    isProcessing = false
-                    processingTask = nil
-                    processingProgress = 0
-                    processingMessage = "Processing stopped. Press Restart to run it again."
-                }
-            } catch {
-                await MainActor.run {
-                    var failed = meeting
-                    failed.status = .failed
-                    failed.summary = ["Processing failed: \(error.localizedDescription)"]
-                    failed.processingMessage = error.localizedDescription
-                    failed.processingProgress = 0
-                    store.upsert(failed)
-                    processingMessage = error.localizedDescription
-                    isProcessing = false
-                    processingTask = nil
-                }
-            }
-        }
+        processor.process(meeting, store: store)
     }
 
     private func stopProcessing() {
-        processingTask?.cancel()
-        processingTask = nil
-        isProcessing = false
-        processingProgress = 0
-        processingMessage = "Processing stopped. Press Restart to run it again."
-        store.resetProcessing(id: meeting.id, message: "Processing was stopped. Press Process Recording to restart.")
+        processor.stopProcessing(meeting.id, store: store)
     }
 
     private func export(_ kind: PDFExportKind) {
@@ -496,4 +404,49 @@ private enum ClipboardKind {
     case actions
     case transcript
     case fullDiscussion
+}
+
+private struct MeetingProcessingPanel: View {
+    let title: String
+    let message: String
+    let progress: Double
+    let isProcessing: Bool
+    let onStop: () -> Void
+    let onRestart: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Label(title, systemImage: isProcessing ? "gearshape.2" : "exclamationmark.arrow.triangle.2.circlepath")
+                    .font(.headline)
+                    .foregroundStyle(AppColors.text)
+                Spacer()
+                if isProcessing {
+                    Button(role: .destructive, action: onStop) {
+                        Label("Stop", systemImage: "stop.fill")
+                    }
+                }
+                Button(action: onRestart) {
+                    Label(isProcessing ? "Running" : "Restart", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.teal)
+                .disabled(isProcessing)
+            }
+
+            ProgressView(value: progress, total: 1.0)
+                .progressViewStyle(.linear)
+                .tint(.teal)
+
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(AppColors.textMuted)
+        }
+        .padding(18)
+        .background(AppColors.surface, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+        }
+    }
 }

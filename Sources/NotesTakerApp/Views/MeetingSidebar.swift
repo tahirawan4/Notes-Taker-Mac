@@ -52,13 +52,13 @@ struct MeetingSidebar: View {
                         MeetingRow(
                             meeting: meeting,
                             isSelected: selectedID == meeting.id,
+                            onSelect: {
+                                selectedID = meeting.id
+                            },
                             onDelete: {
                                 store.deleteMeeting(id: meeting.id)
                             }
                         )
-                        .onTapGesture {
-                            selectedID = meeting.id
-                        }
                     }
                 }
                 .padding(.horizontal, 12)
@@ -145,30 +145,65 @@ private struct NewMeetingView: View {
 private struct MeetingRow: View {
     let meeting: Meeting
     let isSelected: Bool
+    let onSelect: () -> Void
     let onDelete: () -> Void
 
     @State private var isConfirmingDelete = false
 
     var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Button(action: onSelect) {
+                rowContent
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(meeting.title)
+            .accessibilityValue("\(meeting.status.rawValue), \(meeting.source.rawValue)")
+            .accessibilityHint("Select meeting")
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+
+            Button {
+                isConfirmingDelete = true
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 12, weight: .bold))
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(deleteColor)
+            .background(deleteBackground, in: Circle())
+            .help("Delete meeting")
+            .padding(.top, 10)
+            .padding(.trailing, 10)
+        }
+        .background(rowBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(rowBorder, lineWidth: 1)
+        }
+        .confirmationDialog(
+            "Delete this meeting?",
+            isPresented: $isConfirmingDelete,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Meeting", role: .destructive) {
+                onDelete()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the meeting from your local history. Saved recording files are not deleted.")
+        }
+    }
+
+    private var rowContent: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            HStack(alignment: .firstTextBaseline) {
                 Text(meeting.title)
                     .font(.headline)
                     .lineLimit(1)
                     .foregroundStyle(titleColor)
                 Spacer()
                 StatusBadge(status: meeting.status, isOnSelectedRow: isSelected)
-                Button {
-                    isConfirmingDelete = true
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 12, weight: .bold))
-                        .frame(width: 24, height: 24)
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(deleteColor)
-                .background(deleteBackground, in: Circle())
-                .help("Delete meeting")
+                    .padding(.trailing, 34)
             }
 
             HStack(spacing: 8) {
@@ -188,24 +223,7 @@ private struct MeetingRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(rowBackground, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(rowBorder, lineWidth: 1)
-        }
         .contentShape(RoundedRectangle(cornerRadius: 8))
-        .confirmationDialog(
-            "Delete this meeting?",
-            isPresented: $isConfirmingDelete,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Meeting", role: .destructive) {
-                onDelete()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes the meeting from your local history. Saved recording files are not deleted.")
-        }
     }
 
     private var sourceIcon: String {

@@ -14,6 +14,11 @@ let package = Package(
         .executableTarget(
             name: "NotesTakerApp",
             path: "Sources/NotesTakerApp"
+        ),
+        .testTarget(
+            name: "NotesTakerAppTests",
+            dependencies: ["NotesTakerApp"],
+            path: "Tests/NotesTakerAppTests"
         )
     ]
 )

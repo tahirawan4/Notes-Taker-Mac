@@ -78,7 +78,15 @@ struct AINotesService {
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "model": settings.openAIModel,
             "input": prompt,
-            "temperature": 0.2
+            "temperature": 0.2,
+            "text": [
+                "format": [
+                    "type": "json_schema",
+                    "name": "meeting_notes",
+                    "strict": true,
+                    "schema": Self.resultSchema()
+                ]
+            ]
         ])
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -97,6 +105,17 @@ struct AINotesService {
             "model": settings.claudeModel,
             "max_tokens": 1400,
             "temperature": 0.2,
+            "tools": [
+                [
+                    "name": "record_meeting_notes",
+                    "description": "Return structured meeting notes from the transcript.",
+                    "input_schema": Self.resultSchema()
+                ]
+            ],
+            "tool_choice": [
+                "type": "tool",
+                "name": "record_meeting_notes"
+            ],
             "messages": [
                 ["role": "user", "content": prompt]
             ]
@@ -104,7 +123,7 @@ struct AINotesService {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
-        return try extractText(from: data)
+        return try extractClaudeResult(from: data)
     }
 
     private func callGemini(prompt: String, settings: AISettingsSnapshot) async throws -> String {
@@ -172,6 +191,22 @@ struct AINotesService {
         throw AINotesError.badResponse
     }
 
+    private func extractClaudeResult(from data: Data) throws -> String {
+        let object = try JSONSerialization.jsonObject(with: data)
+        if let input = findDictionaryValue(in: object, key: "input"),
+           JSONSerialization.isValidJSONObject(input) {
+            let data = try JSONSerialization.data(withJSONObject: input)
+            guard let value = String(data: data, encoding: .utf8) else {
+                throw AINotesError.badResponse
+            }
+            return value
+        }
+        if let text = findStringValue(in: object, keys: ["text"]) {
+            return text
+        }
+        throw AINotesError.badResponse
+    }
+
     private func findStringValue(in object: Any, keys: Set<String>) -> String? {
         if let dict = object as? [String: Any] {
             for key in keys {
@@ -194,8 +229,28 @@ struct AINotesService {
         return nil
     }
 
+    private func findDictionaryValue(in object: Any, key: String) -> [String: Any]? {
+        if let dict = object as? [String: Any] {
+            if let value = dict[key] as? [String: Any] {
+                return value
+            }
+            for value in dict.values {
+                if let found = findDictionaryValue(in: value, key: key) {
+                    return found
+                }
+            }
+        } else if let array = object as? [Any] {
+            for value in array {
+                if let found = findDictionaryValue(in: value, key: key) {
+                    return found
+                }
+            }
+        }
+        return nil
+    }
+
     private func parseResult(from text: String) throws -> AINotesResult {
-        let cleaned = stripCodeFence(text)
+        let cleaned = extractJSONObject(from: stripCodeFence(text))
         guard let data = cleaned.data(using: .utf8) else {
             throw AINotesError.badResponse
         }
@@ -212,12 +267,58 @@ struct AINotesService {
         return value
     }
 
+    private func extractJSONObject(from text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard
+            let start = trimmed.firstIndex(of: "{"),
+            let end = trimmed.lastIndex(of: "}"),
+            start <= end
+        else {
+            return trimmed
+        }
+        return String(trimmed[start...end])
+    }
+
     private func priority(from value: String?) -> ActionPriority {
         switch value?.lowercased() {
         case "high": .high
         case "low": .low
         default: .medium
         }
+    }
+
+    private static func resultSchema() -> [String: Any] {
+        [
+            "type": "object",
+            "additionalProperties": false,
+            "properties": [
+                "summary": stringArraySchema(),
+                "decisions": stringArraySchema(),
+                "risks": stringArraySchema(),
+                "openQuestions": stringArraySchema(),
+                "actionItems": [
+                    "type": "array",
+                    "items": [
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": [
+                            "owner": ["type": "string"],
+                            "task": ["type": "string"],
+                            "priority": ["type": "string", "enum": ["Low", "Medium", "High"]]
+                        ],
+                        "required": ["owner", "task", "priority"]
+                    ]
+                ]
+            ],
+            "required": ["summary", "decisions", "risks", "openQuestions", "actionItems"]
+        ]
+    }
+
+    private static func stringArraySchema() -> [String: Any] {
+        [
+            "type": "array",
+            "items": ["type": "string"]
+        ]
     }
 
     private func makePrompt(meeting: Meeting, transcript: String) -> String {
